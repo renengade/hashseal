@@ -1,0 +1,55 @@
+[project]
+name = "hashseal"
+version = "0.2.0"
+description = "SHA-256 + Ed25519 文件一致性与来源校验，附 RFC 3161 可信时间戳"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Derrick", email = "1145986820@qq.com" }]
+keywords = [
+    "sha256",
+    "ed25519",
+    "digital-signature",
+    "file-integrity",
+    "rfc3161",
+    "timestamp",
+    "supply-chain",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security :: Cryptography",
+    "Topic :: System :: Archiving",
+]
+dependencies = [
+    "cryptography>=42.0",
+    "asn1crypto>=1.5.1",
+]
+
+[project.optional-dependencies]
+# 可选：OpenTimestamps（去中心化时间戳，等比特币确认）
+ots = ["opentimestamps-client>=0.7.1"]
+
+[project.scripts]
+hashseal = "hashseal:main"
+
+[project.urls]
+Homepage = "https://github.com/renengade/hashseal"
+Source = "https://github.com/renengade/hashseal"
+Issues = "https://github.com/renengade/hashseal/issues"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["hashseal"]
+
+[tool.uv]
+package = true

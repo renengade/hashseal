@@ -1,0 +1,18 @@
+# 开发环境
+.venv/
+__pycache__/
+*.egg-info/
+build/
+dist/
+.ruff_cache/
+
+# 用户自己的密钥与产物（绝不入库）
+*private*.pem
+*public*.pem
+*.sig
+*.tsr
+*.ots
+
+# 系统杂项
+.DS_Store
+Thumbs.db
