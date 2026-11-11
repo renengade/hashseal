@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 生产环境建议锁定版本，而不是跟随 `main`：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | HASHSEAL_REF=v0.2.0 sh
+curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | HASHSEAL_REF=v0.3.0 sh
 ```
 
 其他安装方式：
@@ -113,24 +113,38 @@ hashseal keygen       [--private P] [--public P] [--force]
 hashseal fingerprint  [PUBLIC]
 hashseal hash         FILE...                    # 输出与 sha256sum 兼容
 hashseal manifest     PATH... [-o OUT] [--base DIR]
-hashseal sign         FILE... [-k 私钥] [--signer 文本] [--name 名字]
+hashseal sign         FILE|DIR... [-k 私钥] [--signer 文本] [--name 名字]
                               [--timestamp] [--tsa URL] [--tsa-ca 根] [--tsr 路径]
-hashseal verify       FILE [--sig 路径] [-p 公钥] [--name 原名] [--tsr 令牌] [--tsa-ca 根证书]
+hashseal verify       FILE|DIR [--sig 路径] [-p 公钥] [--name 原名] [--tsr 令牌] [--tsa-ca 根证书]
 hashseal timestamp    FILE [--tsa URL] [--tsa-ca 根证书]
 hashseal check-timestamp FILE --tsr 令牌 [--tsa-ca 根证书]
 hashseal ots          stamp|verify|upgrade FILE   # 可选：OpenTimestamps
 ```
 
-批量交付建议签清单，而不是逐个签 `.sig`（否则"删掉文件连同签名"防不住）：
+### 对整个目录签名
+
+直接传目录即可，内部会自动生成 `MANIFEST.sha256`，只签**清单**、只申请**一次**时间戳：
 
 ```bash
-hashseal manifest dist/ -o MANIFEST.sha256 --base dist
-hashseal sign MANIFEST.sha256
+# A：一条命令搞定整个目录（含时间戳）
+hashseal sign dist/ --timestamp
 
-# 对方
-hashseal verify MANIFEST.sha256
-cd dist && sha256sum -c ../MANIFEST.sha256
+# 产物
+#   dist/MANIFEST.sha256          每个文件的 SHA-256
+#   dist/MANIFEST.sha256.sig      对清单的签名
+#   dist/MANIFEST.sha256.sig.tsr  对清单签名的时间戳
+
+# B：一条命令验证整个目录
+hashseal verify dist/
+#   → 先验清单的签名 + 时间戳，再逐个比对文件内容
 ```
+
+行为说明：
+
+- 目录里新增/删除/改动任意文件，`verify dist/` 都会失败（清单绑定的是完整集合）；
+- 遍历时自动跳过 `.sig` / `.tsr` / `.ots`、`MANIFEST.sha256`，以及 `.git`、`.venv`、`__pycache__` 等目录；
+- 签名/时间戳都只有一份，不会因为文件多而产生 N 次网络请求；
+- 需要更细粒度控制时，仍可手动 `manifest` + `sign MANIFEST.sha256`。
 
 ---
 
@@ -147,11 +161,12 @@ hashseal timestamp app.py.sig
 hashseal verify app.py --tsr app.py.sig.tsr
 ```
 
-- **默认信任根 = 内置 freetsa 根 + 系统 CA 库**，开箱即用，A/B 双方都不用手动下载；
-  freetsa 根证书随包发布、可在 git 历史里审计，SHA-256 为
-  `2151b61137ffa86bf664691ba67e7da0b19f98c758e3d228d5d8ebf27e044438`。
+- **默认 TSA 是 DigiCert**（`http://timestamp.digicert.com`），一般网络都可直连；
+  默认信任根 = 系统 CA 库 + 内置 freetsa 根，开箱即用，A/B 都不用手动下载。
+- 要换 TSA 时才需要 `--tsa`；临时固定用 `export HASHSEAL_TSA=...`。
+- `--tsr` 是**时间戳输出路径**，不是选择 TSA；不写就默认 `<签名>.tsr`。
 - 需要换信任根时：`--tsa-ca your-ca.pem` 或环境变量 `HASHSEAL_TSA_CA`。
-- 公共 TSA（DigiCert / Sectigo 等）一般已被系统 CA 库覆盖，可直接 `--tsa` 换；
+- 公共 TSA（DigiCert / Sectigo / freetsa）都被默认信任根覆盖，可直接 `--tsa` 换；
   **内网/私有 TSA** 请显式给出 `--tsa-ca`，否则链校验标注 `skipped`。
 - 时间戳盖在 **`.sig`** 上：一份令牌同时绑定内容和签名时间。
 - 验证**不需要联网**，令牌自带证书链；有 openssl 时在本地完成链校验。
@@ -163,17 +178,18 @@ hashseal verify app.py --tsr app.py.sig.tsr
 `timestamp` 报 `handshake timed out`、`Connection refused` 或 `Network is unreachable`，是**网络问题**，
 不是证书问题——时间戳必须在线申请，内置根只负责验证、免去下载 CA。
 
-```bash
-# 换一个网络可达的公共 TSA
-hashseal timestamp app.py.sig --tsa http://timestamp.digicert.com
+默认用 DigiCert；若它不可达，换一个：
 
-# 长期固定某个 TSA
-export HASHSEAL_TSA=http://timestamp.digicert.com
-hashseal timestamp app.py.sig
+```bash
+hashseal sign app.py --timestamp --tsa https://freetsa.org/tsr
+hashseal sign app.py --timestamp --tsa http://timestamp.sectigo.com
+
+# 长期固定
+export HASHSEAL_TSA=http://timestamp.sectigo.com
 ```
 
 - 公司代理：urllib 会读取 `HTTPS_PROXY` / `HTTP_PROXY`。
-- 某些网络访问 freetsa 会卡在 TLS 握手，换 DigiCert / Sectigo 通常可用。
+- 某些网络访问 freetsa 会卡在 TLS 握手，所以默认已改为 DigiCert。
 - 完全隔离的内网：只能自建 TSA；OpenTimestamps 同样需要外网。
 
 ---

@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 # asn1crypto 只在时间戳相关命令里懒加载，核心校验功能不强依赖它
 cms = tsp = asn1x509 = None  # type: ignore[assignment]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 FORMAT = "hashseal/1"
 # 兼容改名前的签名格式，便于平滑迁移（只读，不再新签）
@@ -56,6 +56,7 @@ ALLOWED_FORMATS = {FORMAT} | LEGACY_FORMATS
 ALG = "ed25519"
 HASH = "sha256"
 CHUNK = 8 << 20  # 8 MiB
+MANIFEST_NAME = "MANIFEST.sha256"
 DEFAULT_PRIVATE = "hashseal_private.pem"
 DEFAULT_PUBLIC = "hashseal_public.pem"
 
@@ -211,15 +212,23 @@ def cmd_hash(args: argparse.Namespace) -> int:
     return rc
 
 
+SKIP_DIRS = {".git", ".venv", "__pycache__", ".ruff_cache", ".mypy_cache"}
+SKIP_SUFFIXES = {".sig", ".tsr", ".ots"}
+
+
 def iter_files(paths: list[str]) -> list[Path]:
+    """展开文件/目录；目录遍历时跳过签名产物与常见缓存目录。"""
     out: list[Path] = []
     for name in paths:
         p = Path(name)
         if p.is_dir():
             for root, dirs, files in os.walk(p, followlinks=False):
-                dirs.sort()
+                dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
                 for f in sorted(files):
-                    out.append(Path(root) / f)
+                    fp = Path(root) / f
+                    if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
+                        continue
+                    out.append(fp)
         elif p.is_file():
             out.append(p)
         else:
@@ -227,28 +236,35 @@ def iter_files(paths: list[str]) -> list[Path]:
     return out
 
 
-def cmd_manifest(args: argparse.Namespace) -> int:
-    out_path = Path(args.output)
-    files = iter_files(args.paths)
+def build_manifest(paths: list[str], out_path: Path, base: Path | None = None) -> int:
+    """生成 sha256sum 兼容清单，返回条目数。"""
+    files = iter_files(paths)
     if not files:
         die("没有找到任何文件")
 
-    base = Path(args.base).resolve() if args.base else None
+    base_resolved = base.resolve() if base is not None else None
     lines: list[str] = []
     for p in files:
         if p.resolve() == out_path.resolve():
             continue
         shown = p
-        if base is not None:
+        if base_resolved is not None:
             try:
-                shown = p.resolve().relative_to(base)
+                shown = p.resolve().relative_to(base_resolved)
             except ValueError:
                 warn(f"{p} 不在 {base} 下，按原路径记录")
         digest, _ = sha256_file(p)
         lines.append(f"{digest}  {shown.as_posix()}")
 
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"已写入 {out_path}（{len(lines)} 个文件）")
+    return len(lines)
+
+
+def cmd_manifest(args: argparse.Namespace) -> int:
+    out_path = Path(args.output)
+    base = Path(args.base) if args.base else None
+    count = build_manifest(args.paths, out_path, base)
+    print(f"已写入 {out_path}（{count} 个文件）")
     print(f"下一步：hashseal sign {out_path}   然后 hashseal verify {out_path}")
     return 0
 
@@ -262,20 +278,37 @@ def sig_path_for(file_path: Path) -> Path:
 
 def cmd_sign(args: argparse.Namespace) -> int:
     key = load_private(Path(args.key))
-    if (args.sig or args.tsr) and len(args.files) > 1:
-        die("--sig / --tsr 只能用于单文件")
+
+    # 目录 → 先生成 MANIFEST.sha256，再签清单：一次签名/一次时间戳覆盖整批文件
+    if any(Path(n).is_dir() for n in args.files):
+        if args.sig:
+            die("--sig 不支持目录输入（目录固定签 MANIFEST.sha256）")
+        if args.name:
+            die("--name 不支持目录输入")
+    targets: list[Path] = []
+    for name in args.files:
+        src = Path(name)
+        if src.is_dir():
+            manifest = src / MANIFEST_NAME
+            count = build_manifest([str(src)], manifest, src)
+            print(f"已生成清单 {manifest}（{count} 个文件）")
+            targets.append(manifest)
+        elif src.is_file():
+            targets.append(src)
+        else:
+            warn(f"跳过（不存在）: {src}")
+
+    if not targets:
+        die("没有找到可签名的文件")
+    if (args.sig or args.tsr) and len(targets) > 1:
+        die("--sig / --tsr 只能用于单文件或单个目录")
     if args.tsr and not args.timestamp:
         die("--tsr 需要配合 --timestamp 使用")
     if args.tsa_ca and not args.timestamp:
         warn("--tsa-ca 只有配合 --timestamp 才有意义，已忽略")
 
     rc = 0
-    for name in args.files:
-        p = Path(name)
-        if not p.is_file():
-            warn(f"跳过（不是普通文件）: {p}")
-            rc = 2
-            continue
+    for p in targets:
 
         digest, size = sha256_file(p)
         signed_name = norm_name(args.name) if args.name else norm_name(p.name)
@@ -330,8 +363,58 @@ def cmd_sign(args: argparse.Namespace) -> int:
     return rc
 
 
+def _verify_dir(args: argparse.Namespace, root: Path) -> int:
+    """校验目录：先验清单的签名/时间戳，再逐个比对清单里的文件。"""
+    if args.json:
+        die("目录校验暂不支持 --json，请对清单文件单独使用")
+    manifest = root / MANIFEST_NAME
+    if not manifest.is_file():
+        die(f"{root} 下没有 {MANIFEST_NAME}，请先执行: hashseal sign {root}")
+
+    tsr = args.tsr
+    if tsr is None:
+        auto = Path(str(manifest) + ".sig.tsr")
+        if auto.is_file():
+            tsr = str(auto)
+
+    sub = argparse.Namespace(**vars(args))
+    sub.file = str(manifest)
+    sub.sig = None
+    sub.name = None
+    sub.tsr = tsr
+    rc = cmd_verify(sub)
+    if rc != 0:
+        return rc
+
+    lines = [
+        ln for ln in manifest.read_text(encoding="utf-8").splitlines() if ln.strip()
+    ]
+    bad: list[tuple[str, str]] = []
+    for line in lines:
+        digest, sep, rel = line.partition("  ")
+        if not sep:
+            bad.append((line, "清单格式异常"))
+            continue
+        target = root / rel
+        if not target.is_file():
+            bad.append((rel, "文件缺失"))
+            continue
+        actual, _ = sha256_file(target)
+        if actual != digest:
+            bad.append((rel, "内容不一致"))
+    if bad:
+        print(f"逐文件校验  : ❌ {len(bad)}/{len(lines)} 项失败")
+        for rel, why in bad:
+            print(f"  - {rel}: {why}")
+        return 1
+    print(f"逐文件校验  : ✅ {len(lines)} 个文件全部一致")
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     p = Path(args.file)
+    if p.is_dir():
+        return _verify_dir(args, p)
     if not p.is_file():
         die(f"文件不存在或不是普通文件: {p}")
 
@@ -474,7 +557,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # RFC 3161 可信时间戳（L3：证明"某时刻签名已存在"）
 # --------------------------------------------------------------------------- #
-DEFAULT_TSA = "https://freetsa.org/tsr"
+DEFAULT_TSA = "http://timestamp.digicert.com"
 
 # freetsa 根证书（内置，随包发布）：默认可离线核验证书链，无需手动下载。
 # 来源：https://freetsa.org/files/cacert.pem
@@ -919,13 +1002,10 @@ def _system_ca_pem() -> bytes:
     return b""
 
 
-def resolve_ca(
-    explicit: str | None, *, tsa: str | None = None
-) -> tuple[bytes | None, str, bool]:
+def resolve_ca(explicit: str | None) -> tuple[bytes | None, str, bool]:
     """选择 TSA 信任根，返回 (PEM, 标签, 是否严格)。
 
-    优先级：--tsa-ca > 环境变量 HASHSEAL_TSA_CA > 内置 freetsa 根。
-    使用非默认 TSA 且未指定根证书时，返回 None（跳过链校验）。
+    优先级：--tsa-ca > 环境变量 HASHSEAL_TSA_CA > 内置 freetsa 根 + 系统 CA 库。
     """
 
     def _read(path_str: str) -> tuple[bytes, str, bool]:
@@ -940,10 +1020,6 @@ def resolve_ca(
     if env:
         return _read(env)
     system_pem = _system_ca_pem()
-    if tsa is not None and tsa != DEFAULT_TSA:
-        if system_pem:
-            return system_pem, "系统 CA 库", False
-        return None, "", False
     pem = FREETSA_CA_PEM.encode("ascii")
     if system_pem:
         return pem + b"\n" + system_pem, "内置 freetsa 根 + 系统 CA 库", False
@@ -978,7 +1054,7 @@ def _stamp_file(
     digest = bytes.fromhex(digest_hex)
     nonce = int.from_bytes(os.urandom(8), "big")
 
-    ca_pem, ca_label, strict = resolve_ca(tsa_ca, tsa=tsa)
+    ca_pem, ca_label, strict = resolve_ca(tsa_ca)
 
     raw = _post(tsa, _build_request(digest, nonce), timeout)
     info = check_token(
