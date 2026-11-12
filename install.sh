@@ -1,5 +1,5 @@
 #!/bin/sh
-# hashseal installer
+# hashseal installer（POSIX sh，兼容 dash / ash / bash）
 #
 #   curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 #

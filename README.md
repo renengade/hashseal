@@ -67,6 +67,9 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 3. 安装到 uv 的独立工具环境（不污染系统 Python）；
 4. 把 `hashseal` 链接到 `~/.local/bin`，必要时提示/写入 `PATH`。
 
+> 安装脚本是 POSIX `sh`（`#!/bin/sh`），`| sh` 与 `| bash` 都能运行；
+> Alpine / BusyBox 等没有 bash 的环境也能用，所以默认写 `| sh`。
+
 安装后全局可用：
 
 ```bash
