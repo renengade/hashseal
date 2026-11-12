@@ -114,6 +114,9 @@ try {
 
     # Expand-Archive 要求 .zip 扩展名，所以归档文件按类型命名
     if ($isTar) {
+        if (-not (Get-Command tar -ErrorAction SilentlyContinue)) {
+            Fail '解压 .tar.gz 需要 tar（Windows 10 1803+ 自带）；也可以改用 .zip 地址'
+        }
         & tar -xzf $archive -C $Work
         if ($LASTEXITCODE -ne 0) { Fail '解压失败（需要 tar，Windows 10 1803+ 自带）' }
     } else {
