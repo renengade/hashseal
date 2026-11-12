@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 # asn1crypto 只在时间戳相关命令里懒加载，核心校验功能不强依赖它
 cms = tsp = asn1x509 = None  # type: ignore[assignment]
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 FORMAT = "hashseal/1"
 # 兼容改名前的签名格式，便于平滑迁移（只读，不再新签）
@@ -357,7 +357,7 @@ def cmd_sign(args: argparse.Namespace) -> int:
                 continue
             print(f"  时间戳  : {tsr_path}")
             print(
-                f"            {info['gen_time']} 由 TSA「{info['tsa']}」见证"
+                f"            {_fmt_gen_time(info['gen_time'])} 由 TSA「{info['tsa']}」见证"
                 f"（证书链: {info['chain']}）"
             )
     return rc
@@ -519,7 +519,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
             if ts_info is not None:
                 ca_note = f"信任根: {ts_info['ca']}，" if ts_info.get("ca") else ""
                 print(
-                    f"时间戳    : ✅ {ts_info['gen_time']} 由 TSA「{ts_info['tsa']}」见证"
+                    f"时间戳    : ✅ {_fmt_gen_time(ts_info['gen_time'])} 由 TSA「{ts_info['tsa']}」见证"
                     f"（{ca_note}证书链: {ts_info['chain']}）"
                 )
                 print("            → 该签名在该时刻之前已经存在，事后无法抵赖")
@@ -1026,8 +1026,24 @@ def resolve_ca(explicit: str | None) -> tuple[bytes | None, str, bool]:
     return pem, "内置 freetsa 根证书", False
 
 
+def _fmt_gen_time(iso_value: str) -> str:
+    """TSA 时间按本地时区显示，并附 UTC，避免 +00:00 被误读。"""
+    try:
+        dt = datetime.fromisoformat(iso_value)
+    except (TypeError, ValueError):
+        return str(iso_value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone()
+    utc = dt.astimezone(timezone.utc)
+    return (
+        f"{local.strftime('%Y-%m-%d %H:%M:%S %z')}"
+        f"（UTC {utc.strftime('%Y-%m-%d %H:%M:%S')}）"
+    )
+
+
 def _print_token_info(info: dict) -> None:
-    print(f"时间          : {info['gen_time']}")
+    print(f"时间          : {_fmt_gen_time(info['gen_time'])}")
     print(f"TSA           : {info['tsa']}")
     print(f"序列号        : {info['serial']}")
     print(f"策略          : {info['policy']}")
