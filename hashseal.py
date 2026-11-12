@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 # asn1crypto 只在时间戳相关命令里懒加载，核心校验功能不强依赖它
 cms = tsp = asn1x509 = None  # type: ignore[assignment]
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 
 FORMAT = "hashseal/1"
 # 兼容改名前的签名格式，便于平滑迁移（只读，不再新签）
@@ -127,6 +127,8 @@ def now_iso() -> str:
 # 密钥
 # --------------------------------------------------------------------------- #
 def load_private(path: Path) -> ed25519.Ed25519PrivateKey:
+    if path.is_dir():
+        die(f"需要的是私钥文件，但给的是目录: {path}")
     if not path.exists():
         die(f"找不到私钥 {path}（先运行 hashseal keygen）")
     key = serialization.load_pem_private_key(path.read_bytes(), password=None)
@@ -136,6 +138,8 @@ def load_private(path: Path) -> ed25519.Ed25519PrivateKey:
 
 
 def load_public(path: Path) -> ed25519.Ed25519PublicKey:
+    if path.is_dir():
+        die(f"需要的是公钥文件，但给的是目录: {path}")
     if not path.exists():
         die(f"找不到公钥 {path}（向发送方索取，并经可信渠道核对指纹）")
     key = serialization.load_pem_public_key(path.read_bytes())
@@ -157,6 +161,9 @@ def public_fingerprint(key: ed25519.Ed25519PublicKey) -> str:
 def cmd_keygen(args: argparse.Namespace) -> int:
     priv_path = Path(args.private)
     pub_path = Path(args.public)
+    for label, target in (("私钥", priv_path), ("公钥", pub_path)):
+        if target.is_dir():
+            die(f"{label}输出路径是目录，需要文件路径: {target}")
     if priv_path.exists() and not args.force:
         die(f"{priv_path} 已存在；不要覆盖正在使用的私钥（确需覆盖加 --force）")
     if pub_path.exists() and not args.force:
@@ -201,14 +208,23 @@ def cmd_hash(args: argparse.Namespace) -> int:
     rc = 0
     for name in args.files:
         p = Path(name)
-        if not p.is_file():
-            warn(f"跳过（不是普通文件）: {p}")
+        if p.is_dir():
+            targets = iter_files([name])
+            if not targets:
+                warn(f"跳过（目录里没有可哈希的文件）: {p}")
+                rc = 2
+                continue
+        elif p.is_file():
+            targets = [p]
+        else:
+            warn(f"跳过（不存在）: {p}")
             rc = 2
             continue
-        digest, size = sha256_file(p)
-        print(f"{digest}  {p}")
-        if args.verbose:
-            warn(f"{p}: {size} 字节")
+        for target in targets:
+            digest, size = sha256_file(target)
+            print(f"{digest}  {target}")
+            if args.verbose:
+                warn(f"{target}: {size} 字节")
     return rc
 
 
@@ -262,6 +278,8 @@ def build_manifest(paths: list[str], out_path: Path, base: Path | None = None) -
 
 def cmd_manifest(args: argparse.Namespace) -> int:
     out_path = Path(args.output)
+    if out_path.is_dir():
+        die(f"清单输出路径是目录，请给文件路径: {out_path}")
     base = Path(args.base) if args.base else None
     count = build_manifest(args.paths, out_path, base)
     print(f"已写入 {out_path}（{count} 个文件）")
@@ -308,6 +326,8 @@ def cmd_sign(args: argparse.Namespace) -> int:
         warn("--tsa-ca 只有配合 --timestamp 才有意义，已忽略")
 
     # 预检：先确认不会覆盖，再动任何文件，避免留下“清单已更新、签名未更新”的状态
+    if args.sig and Path(args.sig).is_dir():
+        die(f"--sig 指向的是目录，需要文件路径: {args.sig}")
     if not args.force:
         for target in targets:
             sig_path = Path(args.sig) if args.sig else sig_path_for(target)
@@ -1119,6 +1139,8 @@ def _stamp_file(
         warn(f"TSA 回显 nonce={info['nonce']} 与请求 nonce={nonce} 不一致")
 
     out = out_path if out_path else Path(str(data_path) + ".tsr")
+    if out.is_dir():
+        raise TimestampError(f"令牌输出路径是目录，需要文件路径: {out}")
     if out.exists() and not force:
         raise TimestampError(f"{out} 已存在（覆盖加 --force）")
     try:

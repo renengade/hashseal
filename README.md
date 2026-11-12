@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 生产环境建议锁定版本，而不是跟随 `main`：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | HASHSEAL_REF=v0.3.4 sh
+curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | HASHSEAL_REF=v0.3.5 sh
 ```
 
 其他安装方式：
@@ -111,7 +111,7 @@ hashseal verify app.py -p pub.pem || { echo "校验失败，拒绝部署"; exit 
 ```bash
 hashseal keygen       [--private P] [--public P] [--force]
 hashseal fingerprint  [PUBLIC]
-hashseal hash         FILE...                    # 输出与 sha256sum 兼容
+hashseal hash         FILE|DIR...                # 输出与 sha256sum 兼容；目录递归
 hashseal manifest     PATH... [-o OUT] [--base DIR]
 hashseal sign         FILE|DIR... [-k 私钥] [--signer 文本] [--name 名字]
                               [--timestamp] [--tsa URL] [--tsa-ca 根] [--tsr 路径]
@@ -120,6 +120,19 @@ hashseal verify       FILE|DIR [--sig 路径] [-p 公钥] [--name 原名]
 hashseal timestamp    FILE|DIR [--tsa URL] [--tsa-ca 根证书]
 hashseal ots          stamp|verify|upgrade FILE   # 可选：OpenTimestamps
 ```
+
+### 各命令对目录的支持
+
+| 命令 | 目录 | 行为 |
+| --- | --- | --- |
+| `keygen` | ❌ | 输出必须是文件路径，目录会明确报错 |
+| `fingerprint` | ❌ | 需要公钥文件，目录会明确报错 |
+| `hash` | ✅ | 递归计算目录内每个文件（跳过 `.sig`/`.tsr`/`.ots`） |
+| `manifest` | ✅ | 生成覆盖整个目录的 `MANIFEST.sha256` |
+| `sign` | ✅ | 自动生成清单并签名，可选时间戳 |
+| `verify` | ✅ | 验清单签名/时间戳，再逐个比对文件 |
+| `timestamp` | ✅ | 对 `MANIFEST.sha256.sig` 盖章 |
+| `ots` | 透传 | 由 OpenTimestamps 客户端决定 |
 
 ### 对整个目录签名
 
