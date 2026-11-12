@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 生产环境建议锁定版本，而不是跟随 `main`：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | HASHSEAL_REF=v0.3.0 sh
+curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | HASHSEAL_REF=v0.3.2 sh
 ```
 
 其他安装方式：
@@ -144,6 +144,9 @@ hashseal verify dist/
 - 目录里新增/删除/改动任意文件，`verify dist/` 都会失败（清单绑定的是完整集合）；
 - 遍历时自动跳过 `.sig` / `.tsr` / `.ots`、`MANIFEST.sha256`，以及 `.git`、`.venv`、`__pycache__` 等目录；
 - 签名/时间戳都只有一份，不会因为文件多而产生 N 次网络请求；
+- **重复签名必须显式加 `--force`**：未加时会在改动任何文件之前退出（退出码 2），
+  不会留下"清单已更新、签名还是旧的"这种半更新状态；
+- `--force` 会重新生成清单、重签；若同时带 `--timestamp`，还会重新申请时间戳（旧 `.tsr` 被覆盖）；
 - 需要更细粒度控制时，仍可手动 `manifest` + `sign MANIFEST.sha256`。
 
 ---

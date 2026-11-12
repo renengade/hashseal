@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 # asn1crypto 只在时间戳相关命令里懒加载，核心校验功能不强依赖它
 cms = tsp = asn1x509 = None  # type: ignore[assignment]
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 FORMAT = "hashseal/1"
 # 兼容改名前的签名格式，便于平滑迁移（只读，不再新签）
@@ -286,13 +286,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
         if args.name:
             die("--name 不支持目录输入")
     targets: list[Path] = []
+    dir_roots: dict[Path, Path] = {}
     for name in args.files:
         src = Path(name)
         if src.is_dir():
             manifest = src / MANIFEST_NAME
-            count = build_manifest([str(src)], manifest, src)
-            print(f"已生成清单 {manifest}（{count} 个文件）")
             targets.append(manifest)
+            dir_roots[manifest] = src
         elif src.is_file():
             targets.append(src)
         else:
@@ -306,6 +306,23 @@ def cmd_sign(args: argparse.Namespace) -> int:
         die("--tsr 需要配合 --timestamp 使用")
     if args.tsa_ca and not args.timestamp:
         warn("--tsa-ca 只有配合 --timestamp 才有意义，已忽略")
+
+    # 预检：先确认不会覆盖，再动任何文件，避免留下“清单已更新、签名未更新”的状态
+    if not args.force:
+        for target in targets:
+            sig_path = Path(args.sig) if args.sig else sig_path_for(target)
+            if sig_path.exists():
+                die(f"{sig_path} 已存在（覆盖加 --force）")
+            if args.timestamp:
+                tsr_path = Path(args.tsr) if args.tsr else Path(str(sig_path) + ".tsr")
+                if tsr_path.exists():
+                    die(f"{tsr_path} 已存在（覆盖加 --force）")
+
+    for target in targets:
+        if target in dir_roots:
+            count = build_manifest([str(dir_roots[target])], target, dir_roots[target])
+            print(f"已生成清单 {target}（{count} 个文件）")
+            sys.stdout.flush()
 
     rc = 0
     for p in targets:
