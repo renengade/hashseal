@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 # asn1crypto 只在时间戳相关命令里懒加载，核心校验功能不强依赖它
 cms = tsp = asn1x509 = None  # type: ignore[assignment]
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
 
 FORMAT = "hashseal/1"
 # 兼容改名前的签名格式，便于平滑迁移（只读，不再新签）
@@ -1270,11 +1270,11 @@ def _check_timestamp_only(
 
 
 def cmd_ots(args: argparse.Namespace) -> int:
-    """透传 OpenTimestamps 客户端（去中心化时间戳，需 uv sync --extra ots）。"""
+    """透传 OpenTimestamps 客户端（去中心化时间戳，需单独安装 ots）。"""
     exe = shutil.which("ots")
     if not exe:
         die(
-            "未安装 ots。执行：uv sync --extra ots  或  pip install opentimestamps-client"
+            "未安装 ots。执行：uv tool install opentimestamps-client  或  pip install opentimestamps-client"
         )
     if not args.ots_args:
         die("用法：hashseal ots stamp|verify|upgrade FILE ...")
@@ -1296,30 +1296,30 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     kg = sub.add_parser("keygen", help="生成密钥对（只做一次）")
-    kg.add_argument("--private", default=DEFAULT_PRIVATE)
-    kg.add_argument("--public", default=DEFAULT_PUBLIC)
+    kg.add_argument("--private", default=DEFAULT_PRIVATE, help="私钥输出路径")
+    kg.add_argument("--public", default=DEFAULT_PUBLIC, help="公钥输出路径")
     kg.add_argument("--force", action="store_true")
     kg.set_defaults(func=cmd_keygen)
 
     fp = sub.add_parser("fingerprint", help="打印公钥指纹，供电话/当面核对")
-    fp.add_argument("public", nargs="?", default=DEFAULT_PUBLIC)
+    fp.add_argument("public", nargs="?", default=DEFAULT_PUBLIC, help="公钥 PEM 文件")
     fp.set_defaults(func=cmd_fingerprint)
 
     h = sub.add_parser("hash", help="输出 sha256sum 兼容的校验和")
-    h.add_argument("files", nargs="+")
+    h.add_argument("files", nargs="+", help="文件或目录")
     h.add_argument("-v", "--verbose", action="store_true")
     h.set_defaults(func=cmd_hash)
 
     mf = sub.add_parser("manifest", help="为一组文件生成 MANIFEST.sha256")
-    mf.add_argument("paths", nargs="+")
+    mf.add_argument("paths", nargs="+", help="文件或目录")
     mf.add_argument("-o", "--output", default="MANIFEST.sha256")
     mf.add_argument("--base", help="记录相对路径的基准目录")
     mf.set_defaults(func=cmd_manifest)
 
     sg = sub.add_parser("sign", help="为文件生成 .sig 分离签名")
-    sg.add_argument("files", nargs="+")
+    sg.add_argument("files", nargs="+", help="文件或目录")
     sg.add_argument("-k", "--key", default=DEFAULT_PRIVATE)
-    sg.add_argument("--sig", help="签名输出路径（仅单文件）")
+    sg.add_argument("--sig", help="签名输出路径（单文件或单个目录）")
     sg.add_argument("--signer", default="", help="署名信息，仅记录用途")
     sg.add_argument("--name", help="签名时记录的文件名（默认取实际文件名）")
     sg.add_argument(
@@ -1337,14 +1337,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=30.0,
         help="配合 --timestamp 的网络超时秒数",
     )
-    sg.add_argument("--tsr", help="时间戳输出路径（仅单文件，且需 --timestamp）")
+    sg.add_argument("--tsr", help="时间戳输出路径（单文件或单个目录，需 --timestamp）")
     sg.add_argument("--force", action="store_true", help="覆盖已存在的 .sig / .tsr")
     sg.set_defaults(func=cmd_sign)
 
     vf = sub.add_parser("verify", help="验证文件与 .sig 是否一致")
-    vf.add_argument("file")
-    vf.add_argument("--sig")
-    vf.add_argument("-p", "--pubkey", default=DEFAULT_PUBLIC)
+    vf.add_argument("file", help="文件或目录")
+    vf.add_argument("--sig", help="签名文件路径（默认 <file>.sig）")
+    vf.add_argument("-p", "--pubkey", default=DEFAULT_PUBLIC, help="公钥 PEM")
     vf.add_argument("--name", help="文件被改名时，指定签名时记录的原文件名")
     vf.add_argument("--tsr", help="同时校验对 .sig 的 RFC 3161 时间戳令牌")
     vf.add_argument(
@@ -1364,13 +1364,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HASHSEAL_TSA") or DEFAULT_TSA,
         help=f"TSA 地址（默认 {DEFAULT_TSA}，可用 HASHSEAL_TSA 覆盖）"
     )
-    ts.add_argument("--tsa-ca", help="TSA 信任根 PEM；给出则立即校验证书链")
+    ts.add_argument("--tsa-ca", help="覆盖内置信任根（PEM）")
     ts.add_argument("--timeout", type=float, default=30.0, help="网络超时秒数")
     ts.add_argument("--force", action="store_true")
     ts.add_argument("--json", action="store_true")
     ts.set_defaults(func=cmd_timestamp)
 
-    ot = sub.add_parser("ots", help="透传 OpenTimestamps 客户端（uv sync --extra ots）")
+    ot = sub.add_parser("ots", help="透传 OpenTimestamps 客户端（需单独安装 ots）")
     ot.add_argument("ots_args", nargs=argparse.REMAINDER)
     ot.set_defaults(func=cmd_ots)
 
