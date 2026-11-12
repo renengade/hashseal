@@ -54,7 +54,7 @@
 
 ## 安装
 
-### 一行安装
+### Linux / macOS（curl）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
@@ -70,6 +70,32 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 > 安装脚本是 POSIX `sh`（`#!/bin/sh`），`| sh` 与 `| bash` 都能运行；
 > Alpine / BusyBox 等没有 bash 的环境也能用，所以默认写 `| sh`。
 
+### Windows（PowerShell）
+
+```powershell
+irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+```
+
+适用于 Windows 10/11 自带的 PowerShell 5.1 与 PowerShell 7+：
+
+- 同样通过 uv 安装到独立环境，不污染系统 Python；
+- 自动把 `%USERPROFILE%\.local\bin` 加入用户 PATH；
+- 失败时只报错，不会关闭你当前的 PowerShell 会话。
+
+锁定版本：
+
+```powershell
+$env:HASHSEAL_REF = 'v0.3.7'
+irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+```
+
+网络受限时走代理：
+
+```powershell
+$env:HASHSEAL_URL = 'https://gh-proxy.com/https://github.com/renengade/hashseal/archive/main.zip'
+irm https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+```
+
 安装后全局可用：
 
 ```bash
@@ -81,7 +107,7 @@ hashseal --help
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh \
-  | HASHSEAL_REF=v0.3.6 sh
+  | HASHSEAL_REF=v0.3.7 sh
 ```
 
 `HASHSEAL_REF` 支持分支、tag 或 commit SHA。
@@ -107,7 +133,7 @@ export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/a
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
-锁定版本时把 `main` 换成 tag，例如 `v0.3.6`。
+锁定版本时把 `main` 换成 tag，例如 `v0.3.7`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
@@ -268,7 +294,7 @@ cd dist && sha256sum -c ../MANIFEST.sha256
 全局选项：
 
 ```bash
-hashseal --version        # 0.3.6
+hashseal --version        # 0.3.7
 hashseal --help
 ```
 
@@ -613,6 +639,7 @@ hashseal verify dist/ --tsr dist/MANIFEST.sha256.sig.tsr \
 - **签名证明"谁签的"，不证明"内容是对的"**：签名者也可能签一份坏文件。
 - **时间戳证明"什么时候签的"**，不证明内容质量。
 - **私钥泄露等于历史签名失效**：请用 0600、加密盘 / KMS / HSM 保管，并准备轮换与吊销。
+- **Windows 权限**：`chmod 0600` 在 Windows 上不生效，请用 `icacls` 收紧 ACL，或用 DPAPI/凭据管理器保护私钥。
 - **二次转发**：C 必须从可信渠道获取 A 的指纹；只信"B 转发的公钥"，信任链就退化成"信 B"。
 - **改名**：默认视为不同交付物；确属改名时显式 `--name 原名`。
 - **换行符**：Windows 的 CRLF 转换会改变字节，哈希必变；用二进制模式传输。

@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 # asn1crypto 只在时间戳相关命令里懒加载，核心校验功能不强依赖它
 cms = tsp = asn1x509 = None  # type: ignore[assignment]
 
-__version__ = "0.3.6"
+__version__ = "0.3.7"
 
 FORMAT = "hashseal/1"
 # 兼容改名前的签名格式，便于平滑迁移（只读，不再新签）
