@@ -94,18 +94,17 @@ pipx install git+https://github.com/renengade/hashseal      # 习惯 pipx
 
 三个环节可分别走镜像：
 
+部分网络会重置 `raw.githubusercontent.com` 和 `github.com/archive`，可以全部走代理：
+
 ```bash
-# 1) uv 本体（安装脚本会自动装）
-export UV_INSTALLER_GITHUB_BASE_URL=https://ghfast.top/https://github.com
-
-# 2) PyPI 依赖（uv 不读 PIP_INDEX_URL）
+export UV_INSTALLER_GITHUB_BASE_URL=https://gh-proxy.com/https://github.com
 export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/archive/main.tar.gz
 
-# 3) hashseal 源码包
-export HASHSEAL_URL=https://ghfast.top/https://github.com/renengade/hashseal/archive/main.tar.gz
-
-curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
+
+锁定版本时把 `main` 换成 tag，例如 `v0.3.6`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
