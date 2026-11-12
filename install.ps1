@@ -16,6 +16,12 @@
     - 不修改文件权限之外的系统设置，只可能追加用户 PATH。
 #>
 
+# 记住当前会话设置，结束时恢复，避免 iex 改变用户的全局偏好
+$OldEAP = $ErrorActionPreference
+$OldPythonUtf8 = $env:PYTHONUTF8
+$OldConsoleEncoding = $null
+try { $OldConsoleEncoding = [Console]::OutputEncoding } catch { }
+
 $ErrorActionPreference = 'Stop'
 
 # PS 5.1 默认可能未启用 TLS 1.2
@@ -27,6 +33,18 @@ try {
 # 中文输出尽量不走 GBK
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $env:PYTHONUTF8 = '1'
+
+function Restore-Session {
+    $global:ErrorActionPreference = $OldEAP
+    if ($null -eq $OldPythonUtf8) {
+        Remove-Item Env:PYTHONUTF8 -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONUTF8 = $OldPythonUtf8
+    }
+    if ($null -ne $OldConsoleEncoding) {
+        try { [Console]::OutputEncoding = $OldConsoleEncoding } catch { }
+    }
+}
 
 $Repo = if ($env:HASHSEAL_REPO) { $env:HASHSEAL_REPO } else { 'renengade/hashseal' }
 $Ref  = if ($env:HASHSEAL_REF)  { $env:HASHSEAL_REF }  else { 'main' }
@@ -40,6 +58,7 @@ function Write-Step([string]$Message) {
 
 function Fail([string]$Message) {
     Write-Host "错误: $Message" -ForegroundColor Red
+    Restore-Session
     throw $Message
 }
 
@@ -83,15 +102,18 @@ try {
         $archiveUrl = "https://github.com/$Repo/archive/$Ref.zip"
     }
 
+    $isTar = $archiveUrl -match '\.(tar\.gz|tgz)$'
+    $archive = Join-Path $Work ($(if ($isTar) { 'src.tar.gz' } else { 'src.zip' }))
+
     Write-Step "下载 $archiveUrl"
-    $archive = Join-Path $Work 'src.pkg'
     try {
         Invoke-WebRequest -Uri $archiveUrl -OutFile $archive -UseBasicParsing -TimeoutSec 600
     } catch {
         Fail "下载失败（检查仓库/分支/网络，或设置 HASHSEAL_REF / HASHSEAL_URL）: $($_.Exception.Message)"
     }
 
-    if ($archiveUrl -match '\.(tar\.gz|tgz)$') {
+    # Expand-Archive 要求 .zip 扩展名，所以归档文件按类型命名
+    if ($isTar) {
         & tar -xzf $archive -C $Work
         if ($LASTEXITCODE -ne 0) { Fail '解压失败（需要 tar，Windows 10 1803+ 自带）' }
     } else {
@@ -159,3 +181,5 @@ if ($cmd) {
 Write-Host ''
 Write-Host '升级: 重新执行本脚本'
 Write-Host '卸载: uv tool uninstall hashseal'
+
+Restore-Session
