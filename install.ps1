@@ -96,7 +96,7 @@ try {
         if ($LASTEXITCODE -ne 0) { Fail '解压失败（需要 tar，Windows 10 1803+ 自带）' }
     } else {
         try {
-            Expand-Archive -LiteralPath $archive -DestinationPath $Work -Force
+            Expand-Archive -Path $archive -DestinationPath $Work -Force
         } catch {
             Fail "解压失败: $($_.Exception.Message)"
         }
