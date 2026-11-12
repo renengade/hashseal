@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 生产环境建议锁定版本，而不是跟随 `main`：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | HASHSEAL_REF=v0.3.3 sh
+curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | HASHSEAL_REF=v0.3.4 sh
 ```
 
 其他安装方式：
@@ -115,9 +115,9 @@ hashseal hash         FILE...                    # 输出与 sha256sum 兼容
 hashseal manifest     PATH... [-o OUT] [--base DIR]
 hashseal sign         FILE|DIR... [-k 私钥] [--signer 文本] [--name 名字]
                               [--timestamp] [--tsa URL] [--tsa-ca 根] [--tsr 路径]
-hashseal verify       FILE|DIR [--sig 路径] [-p 公钥] [--name 原名] [--tsr 令牌] [--tsa-ca 根证书]
+hashseal verify       FILE|DIR [--sig 路径] [-p 公钥] [--name 原名]
+                              [--tsr 令牌] [--ts-only] [--tsa-ca 根证书]
 hashseal timestamp    FILE|DIR [--tsa URL] [--tsa-ca 根证书]
-hashseal check-timestamp FILE|DIR [--tsr 令牌] [--tsa-ca 根证书]
 hashseal ots          stamp|verify|upgrade FILE   # 可选：OpenTimestamps
 ```
 
@@ -162,13 +162,16 @@ hashseal timestamp app.py.sig
 
 # B：签名 + 时间戳一起验（离线即可）
 hashseal verify app.py --tsr app.py.sig.tsr
+
+# 只验时间戳、不要求签名（原 check-timestamp）
+hashseal verify app.py.sig --tsr app.py.sig.tsr --ts-only
 ```
 
 目录也可以直接盖章/核验（自动定位 `MANIFEST.sha256.sig`）：
 
 ```bash
 hashseal timestamp dist/           # 对 dist/MANIFEST.sha256.sig 申请时间戳
-hashseal check-timestamp dist/     # 自动读取 dist/MANIFEST.sha256.sig.tsr
+hashseal verify dist/ --ts-only    # 自动读取 dist/MANIFEST.sha256.sig.tsr
 ```
 
 - **默认 TSA 是 DigiCert**（`http://timestamp.digicert.com`），一般网络都可直连；
