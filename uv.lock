@@ -231,7 +231,7 @@ wheels = [
 
 [[package]]
 name = "hashseal"
-version = "0.3.7"
+version = "0.3.6"
 source = { editable = "." }
 dependencies = [
     { name = "asn1crypto" },

@@ -1,6 +1,6 @@
 [project]
 name = "hashseal"
-version = "0.3.7"
+version = "0.3.6"
 description = "SHA-256 + Ed25519 文件一致性与来源校验，附 RFC 3161 可信时间戳"
 readme = "README.md"
 requires-python = ">=3.10"
