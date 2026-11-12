@@ -651,14 +651,7 @@ uv run hashseal --help
 uv run python -m hashseal --version
 ```
 
-测试、离线夹具与攻防演示在独立仓库
-[hashseal-dev](https://github.com/renengade/hashseal-dev)：
-
-```bash
-git clone https://github.com/renengade/hashseal-dev
-cd hashseal-dev
-./run-tests.sh        # 默认测试同级 ../hashseal 源码
-```
+测试与演示不随发布仓分发，请在本地开发环境运行。
 
 ---
 
