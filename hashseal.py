@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 # asn1crypto 只在时间戳相关命令里懒加载，核心校验功能不强依赖它
 cms = tsp = asn1x509 = None  # type: ignore[assignment]
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 FORMAT = "hashseal/1"
 # 兼容改名前的签名格式，便于平滑迁移（只读，不再新签）
@@ -1112,10 +1112,25 @@ def _stamp_file(
     return out, info, digest_hex
 
 
+def _dir_timestamp_target(root: Path) -> tuple[Path, str]:
+    """目录的时间戳对象：优先清单签名，其次清单本身。"""
+    sig = Path(str(root / MANIFEST_NAME) + ".sig")
+    if sig.is_file():
+        return sig, "清单签名"
+    manifest = root / MANIFEST_NAME
+    if manifest.is_file():
+        warn("目录清单尚未签名；本次只证明清单在该时刻已存在，建议先 hashseal sign")
+        return manifest, "清单"
+    die(f"{root} 里没有 {MANIFEST_NAME}，请先执行: hashseal sign {root}")
+
+
 def cmd_timestamp(args: argparse.Namespace) -> int:
     p = Path(args.file)
-    if not p.is_file():
-        die(f"文件不存在或不是普通文件: {p}")
+    if p.is_dir():
+        p, kind = _dir_timestamp_target(p)
+        print(f"目录模式：对{kind} {p} 申请时间戳")
+    elif not p.is_file():
+        die(f"路径不存在: {p}")
     digest_hex, size = sha256_file(p)
 
     try:
@@ -1151,9 +1166,21 @@ def cmd_timestamp(args: argparse.Namespace) -> int:
 
 def cmd_check_timestamp(args: argparse.Namespace) -> int:
     p = Path(args.file)
-    if not p.is_file():
-        die(f"文件不存在或不是普通文件: {p}")
-    token_path = Path(args.tsr)
+    tsr_arg = args.tsr
+    if p.is_dir():
+        p, kind = _dir_timestamp_target(p)
+        print(f"目录模式：校验{kind} {p} 的时间戳")
+        if tsr_arg is None:
+            auto = Path(str(p) + ".tsr")
+            if not auto.is_file():
+                die(f"找不到时间戳令牌 {auto}（先执行: hashseal timestamp {args.file}）")
+            tsr_arg = str(auto)
+    elif not p.is_file():
+        die(f"路径不存在: {p}")
+
+    if tsr_arg is None:
+        die("请用 --tsr 指定时间戳令牌")
+    token_path = Path(tsr_arg)
     if not token_path.is_file():
         die(f"找不到时间戳令牌: {token_path}")
 
@@ -1291,7 +1318,7 @@ def build_parser() -> argparse.ArgumentParser:
     vf.set_defaults(func=cmd_verify)
 
     ts = sub.add_parser("timestamp", help="向 TSA 申请 RFC 3161 可信时间戳")
-    ts.add_argument("file")
+    ts.add_argument("file", help="文件或目录（目录会自动定位 MANIFEST）")
     ts.add_argument("-o", "--out", help="令牌输出路径（默认 <file>.tsr）")
     ts.add_argument(
         "--tsa",
@@ -1305,8 +1332,8 @@ def build_parser() -> argparse.ArgumentParser:
     ts.set_defaults(func=cmd_timestamp)
 
     ct = sub.add_parser("check-timestamp", help="校验时间戳令牌与文件是否对应")
-    ct.add_argument("file")
-    ct.add_argument("--tsr", required=True, help="时间戳令牌（.tsr）")
+    ct.add_argument("file", help="文件或目录（目录会自动定位 MANIFEST）")
+    ct.add_argument("--tsr", help="时间戳令牌（.tsr）；目录模式可省略")
     ct.add_argument("--tsa-ca", help="覆盖内置信任根（PEM）；自定义 TSA 时建议显式给出")
     ct.add_argument("--json", action="store_true")
     ct.set_defaults(func=cmd_check_timestamp)
