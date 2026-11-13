@@ -7,7 +7,7 @@
 - 工程：`src/` 布局拆分（core / manifest / tsa / cli）、pytest、ruff、GitHub Actions、pre-commit。
 - 体验：`diff`、`inspect`、`--allow-unlisted`、`--exclude`。
 
-## 0.5.0（计划）
+## 0.5.0（已完成，并入 0.6.0）
 
 - `bundle` / `unpack`：文件 + `.sig` + `.tsr` + 公钥一键打包与验证。
 - `renew`：只续期时间戳，不重签。
@@ -15,9 +15,9 @@
 - 配置系统：`~/.config/hashseal/config.toml`（默认 TSA/CA/key/exclude）。
 - 审计日志（JSON Lines）与细分退出码。
 
-## 0.6.0（计划）
+## 0.6.0（已完成）
 
-- 发布到 PyPI（Trusted Publishing）。
+- 发布到 PyPI（Trusted Publishing，workflow 已就绪，需配置仓库变量）。
 - SBOM（SPDX / CycloneDX）生成与签名。
 - GitHub Action / pre-commit 验证示例。
 - Docker 镜像（ghcr.io），用于 CI 内验证。

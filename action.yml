@@ -1,0 +1,34 @@
+name: hashseal verify
+description: Verify a file or directory signed with hashseal
+branding:
+  icon: shield
+  color: blue
+inputs:
+  path:
+    description: File or directory to verify
+    required: true
+  pubkey:
+    description: Public key PEM (or path inside the workspace)
+    required: true
+  tsr:
+    description: Optional RFC 3161 timestamp token
+    required: false
+    default: ""
+  version:
+    description: hashseal release tag or branch
+    required: false
+    default: main
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v6
+    - shell: bash
+      env:
+        HS_PATH: ${{ inputs.path }}
+        HS_PUBKEY: ${{ inputs.pubkey }}
+        HS_TSR: ${{ inputs.tsr }}
+        HS_VERSION: ${{ inputs.version }}
+      run: |
+        args=(verify "$HS_PATH" -p "$HS_PUBKEY")
+        if [ -n "$HS_TSR" ]; then args+=(--tsr "$HS_TSR"); fi
+        uvx --from "git+https://github.com/renengade/hashseal@${HS_VERSION}" hashseal "${args[@]}"

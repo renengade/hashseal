@@ -1,6 +1,6 @@
 [project]
 name = "hashseal"
-version = "0.4.1"
+version = "0.6.0"
 description = "SHA-256 + Ed25519 文件一致性与来源校验，附 RFC 3161 可信时间戳"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,6 +30,7 @@ classifiers = [
 dependencies = [
     "cryptography>=42.0",
     "asn1crypto>=1.5.1",
+    "tomli>=2.0.1; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]

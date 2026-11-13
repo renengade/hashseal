@@ -252,11 +252,12 @@ wheels = [
 
 [[package]]
 name = "hashseal"
-version = "0.4.1"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "asn1crypto" },
     { name = "cryptography" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -276,6 +277,7 @@ requires-dist = [
     { name = "asn1crypto", specifier = ">=1.5.1" },
     { name = "cryptography", specifier = ">=42.0" },
     { name = "opentimestamps-client", marker = "extra == 'ots'", specifier = ">=0.7.1" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0.1" },
 ]
 provides-extras = ["ots"]
 

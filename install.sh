@@ -37,6 +37,18 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 say "下载 $URL"
 curl -fsSL "$URL" -o "$TMP/src.tar.gz" || die "下载失败（检查仓库/分支，或设置 HASHSEAL_REF）"
 
+if [ -n "${HASHSEAL_SHA256:-}" ]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual="$(sha256sum "$TMP/src.tar.gz" | awk '{print $1}')"
+    elif command -v shasum >/dev/null 2>&1; then
+        actual="$(shasum -a 256 "$TMP/src.tar.gz" | awk '{print $1}')"
+    else
+        die "需要 sha256sum 或 shasum 才能校验 HASHSEAL_SHA256"
+    fi
+    [ "$actual" = "$HASHSEAL_SHA256" ] || die "SHA-256 校验失败（期望 $HASHSEAL_SHA256，实际 $actual）"
+    say "SHA-256 校验通过"
+fi
+
 # 3) 解包并安装到独立环境
 tar -xzf "$TMP/src.tar.gz" -C "$TMP" || die "解压失败"
 SRC="$(find "$TMP" -mindepth 1 -maxdepth 1 -type d | head -n 1)"

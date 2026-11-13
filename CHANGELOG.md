@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- `status`：快速检查签名，不请求 TSA。
+- `renew`：只续期时间戳，不重签。
+- `bundle` / `unpack`：已签名目录打包为 zip，解包后自动校验。
+- `sbom`：从已签名清单生成 CycloneDX SBOM。
+- 配置文件 `~/.config/hashseal/config.toml` 与 `config` 命令。
+- JSON Lines 审计日志与 `audit` 命令。
+- `Dockerfile`、GitHub Action (`action.yml`)、发布产物 `SHA256SUMS`。
+- `install.sh` 支持 `HASHSEAL_SHA256` 校验下载包。
+
 ## 0.4.1
 
 ### Fixed

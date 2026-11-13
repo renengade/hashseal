@@ -27,6 +27,12 @@
   - [ots](#ots--opentimestamps)
   - [diff](#diff--对比清单)
   - [inspect](#inspect--查看元数据)
+  - [status](#status--快速检查)
+  - [renew](#renew--续期时间戳)
+  - [bundle / unpack](#bundle--unpack--打包与解包)
+  - [sbom](#sbom--生成-sbom)
+  - [config](#config--配置)
+  - [audit](#audit--审计日志)
 - [目录支持矩阵](#目录支持矩阵)
 - [时间戳深入](#时间戳深入)
 - [退出码与自动化](#退出码与自动化)
@@ -84,10 +90,16 @@ hashseal --help
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh \
-  | HASHSEAL_REF=v0.4.1 sh
+  | HASHSEAL_REF=v0.6.0 sh
 ```
 
 `HASHSEAL_REF` 支持分支、tag 或 commit SHA。
+
+下载包可校验 SHA-256（Release 页面附 `SHA256SUMS`）：
+
+```bash
+curl -fsSL .../install.sh | HASHSEAL_REF=v0.6.0 HASHSEAL_SHA256=<sha256> sh
+```
 
 ### 其他安装方式
 
@@ -108,7 +120,7 @@ export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/a
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
-锁定版本时把 `main` 换成 tag，例如 `v0.4.1`。
+锁定版本时把 `main` 换成 tag，例如 `v0.6.0`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
@@ -270,7 +282,7 @@ cd dist && sha256sum -c ../MANIFEST.sha256
 全局选项：
 
 ```bash
-hashseal --version        # 0.4.1
+hashseal --version        # 0.6.0
 hashseal --help
 ```
 
@@ -564,6 +576,77 @@ hashseal inspect FILE [--json]
 
 ---
 
+### `status` — 快速检查
+
+```
+hashseal status FILE|DIR [--sig PATH] [-p PUBKEY] [--json]
+```
+
+只验证签名和清单，不读取时间戳、不联网；适合提交前或 CI 的快速门禁。
+
+### `renew` — 续期时间戳
+
+```
+hashseal renew FILE|DIR [--tsa URL] [--force]
+```
+
+对已有的 `.sig` 重新申请时间戳，不重新签名；用于时间戳续期或更换 TSA。
+
+### `bundle` / `unpack` — 打包与解包
+
+```
+hashseal bundle DIR -o out.zip [-p PUBKEY] [--include-pubkey] [--allow-unlisted]
+hashseal unpack out.zip -d DIR [--force] [--no-verify]
+```
+
+`bundle` 只打包清单中列出的文件，并验证签名；`unpack` 拒绝 `..`、绝对路径和符号链接条目，解包后自动 `verify`。
+
+```bash
+hashseal bundle dist -o dist.zip --include-pubkey
+hashseal unpack dist.zip -d restored
+```
+
+> 内置公钥只方便分发；信任前仍须通过独立渠道核对指纹。
+
+### `sbom` — 生成 SBOM
+
+```
+hashseal sbom DIR [-o sbom.cdx.json]
+```
+
+从已签名清单生成 CycloneDX 1.5 JSON，再对 SBOM 本身签名即可纳入交付链。
+
+### `config` — 配置
+
+```
+hashseal config [--json]
+```
+
+配置文件默认 `~/.config/hashseal/config.toml`（可用 `HASHSEAL_CONFIG` 覆盖）：
+
+```toml
+[hashseal]
+tsa = "https://timestamp.digicert.com"
+tsa_ca = "/path/to/ca.pem"
+key = "~/.config/hashseal/private.pem"
+pubkey = "~/.config/hashseal/public.pem"
+exclude = ["*.log"]
+follow_symlinks = false
+audit = true
+```
+
+优先级：命令行 > 环境变量 > 配置文件 > 内置默认值。
+
+### `audit` — 审计日志
+
+```
+hashseal audit [-n 20]
+```
+
+日志默认写入 `~/.local/state/hashseal/audit.jsonl`（JSON Lines），可用 `HASHSEAL_AUDIT_LOG` 改路径、`HASHSEAL_NO_AUDIT=1` 或 `--no-audit` 关闭。
+
+---
+
 ## 目录支持矩阵
 
 | 命令 | 目录 | 行为 |
@@ -578,6 +661,11 @@ hashseal inspect FILE [--json]
 | `ots` | 透传 | 由 `ots` 客户端决定 |
 | `diff` | — | 直接对比两份清单 |
 | `inspect` | — | 查看 `.sig` / `.tsr` 元数据 |
+| `status` | ✅ | 快速校验签名与清单 |
+| `renew` | ✅ | 续期清单签名的时间戳 |
+| `bundle` | ✅ | 打包已签名目录 |
+| `unpack` | ✅ | 解包并校验 |
+| `sbom` | ✅ | 从清单生成 SBOM |
 
 ---
 
@@ -712,6 +800,22 @@ uv run ruff check .
 ```
 
 CI 在 Linux/macOS × Python 3.10–3.13 上运行测试与静态检查；打 `v*` tag 时由 release workflow 构建并发布。
+
+### Docker
+
+```bash
+docker build -t hashseal .
+docker run --rm -v "$PWD:/work" hashseal verify /work/app.py -p /work/public.pem
+```
+
+### GitHub Action
+
+```yaml
+- uses: renengade/hashseal@main
+  with:
+    path: dist/
+    pubkey: keys/hashseal_public.pem
+```
 
 ---
 
