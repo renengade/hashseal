@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -13,7 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 import hashseal
-from hashseal import cli
+from hashseal import audit, cli
 
 
 class FeatureTest(unittest.TestCase):
@@ -91,6 +93,27 @@ class FeatureTest(unittest.TestCase):
         self.assertEqual(line["event"], "sign")
         self.assertTrue(line["ok"])
 
+    def test_audit_rotation(self) -> None:
+        log = self.tmp / "rot.jsonl"
+        cfg = {"audit_sink": "file", "audit_file": str(log), "audit_max_bytes": 200, "audit_backups": 2}
+        with mock.patch.dict(os.environ, {"HASHSEAL_NO_AUDIT": ""}):
+            for i in range(6):
+                audit.write_event("test", config=cfg, n=i)
+        self.assertTrue(log.is_file())
+        self.assertTrue(Path(str(log) + ".1").is_file())
+
+    def test_syslog_sink_does_not_write_file(self) -> None:
+        log = self.tmp / "syslog.jsonl"
+        cfg = {"audit_sink": "syslog", "audit_file": str(log)}
+        with (
+            mock.patch.dict(os.environ, {"HASHSEAL_NO_AUDIT": ""}),
+            mock.patch("syslog.syslog") as syslog_write,
+            mock.patch("syslog.openlog"),
+        ):
+            audit.write_event("sign", config=cfg, path="x")
+        self.assertTrue(syslog_write.called)
+        self.assertFalse(log.exists())
+
     # ----------------------------------------------------------------- renew
     def test_renew_targets_signature(self) -> None:
         self._sign()
@@ -132,6 +155,57 @@ class FeatureTest(unittest.TestCase):
         self.assertEqual(data["bomFormat"], "CycloneDX")
         self.assertEqual(len(data["components"]), 2)
         self.assertTrue(any(c["name"] == "x.txt" for c in data["components"]))
+
+    def test_sbom_with_dependencies(self) -> None:
+        d = self._dir()
+        (d / "uv.lock").write_text(
+            'version = 1\n'
+            '[[package]]\nname = "requests"\nversion = "2.32.0"\n'
+            '[[package]]\nname = "urllib3"\nversion = "2.2.1"\n',
+            encoding="utf-8",
+        )
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        out = self.tmp / "sbom-deps.json"
+        rc, text = self._run("sbom", str(d), "-o", str(out), "--deps")
+        self.assertEqual(rc, 0, text)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        libs = [c for c in data["components"] if c["type"] == "library"]
+        self.assertEqual({c["name"] for c in libs}, {"requests", "urllib3"})
+        self.assertIn("pkg:pypi/requests@2.32.0", {c.get("purl") for c in libs})
+
+    def test_attest_roundtrip_and_tamper(self) -> None:
+        d = self._dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        att = self.tmp / "att.json"
+        rc, out = self._run("attest", str(d), "-o", str(att), "-k", str(self.priv))
+        self.assertEqual(rc, 0, out)
+        rc, out = self._run("attest-verify", str(att), "-p", str(self.pub))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("证明有效", out)
+
+        env = json.loads(att.read_text(encoding="utf-8"))
+        payload = json.loads(base64.b64decode(env["payload"]))
+        payload["subject"][0]["digest"]["sha256"] = "0" * 64
+        env["payload"] = base64.b64encode(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).decode()
+        att.write_text(json.dumps(env), encoding="utf-8")
+        rc, out = self._run("attest-verify", str(att), "-p", str(self.pub))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("无效", out)
+
+    def test_interactive_password_prompt(self) -> None:
+        pw = self.tmp / "pw.txt"
+        pw.write_text("testpassword123", encoding="utf-8")
+        priv = self.tmp / "enc.pem"
+        pub = self.tmp / "enc.pub"
+        self._run("keygen", "--private", str(priv), "--public", str(pub), "--password-file", str(pw))
+        with (
+            mock.patch.object(sys.stdin, "isatty", return_value=True),
+            mock.patch("getpass.getpass", return_value="testpassword123"),
+        ):
+            rc, out = self._run("sign", str(self.target), "-k", str(priv))
+        self.assertEqual(rc, 0, out)
 
     def test_unpack_rejects_zip_slip(self) -> None:
         bad = self.tmp / "bad.zip"

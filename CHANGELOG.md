@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+### Added
+
+- in-toto Statement + DSSE：`attest` / `attest-verify`。
+- SBOM `--deps` / `--lock`：追加 `uv.lock` / `requirements.txt` 组件（name/version/purl）。
+- 审计 sink：`file` / `syslog` / `both`，按大小轮转（默认 10 MiB × 5）。
+- 交互式私钥口令提示（有 TTY 时）。
+- mkdocs-material 文档站与 GitHub Pages workflow（威胁模型、审计、证明）。
+
 ## 0.6.0
 
 ### Added

@@ -179,6 +179,14 @@ def generate_keypair(
     return key
 
 
+def is_encrypted_key(path: Path) -> bool:
+    """通过 PEM 头判断私钥是否加密，避免无谓的口令提示。"""
+    try:
+        return b"ENCRYPTED PRIVATE KEY" in path.read_bytes()
+    except OSError:
+        return False
+
+
 def load_private(path: Path, password: str | None = None) -> ed25519.Ed25519PrivateKey:
     if path.is_dir():
         die(f"需要的是私钥文件，但给的是目录: {path}")

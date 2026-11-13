@@ -1,6 +1,6 @@
 [project]
 name = "hashseal"
-version = "0.6.0"
+version = "0.7.0"
 description = "SHA-256 + Ed25519 文件一致性与来源校验，附 RFC 3161 可信时间戳"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -60,6 +60,7 @@ hashseal = ["py.typed"]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
+docs = ["mkdocs-material>=9.5"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

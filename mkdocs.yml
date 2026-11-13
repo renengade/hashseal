@@ -1,0 +1,25 @@
+site_name: hashseal
+site_url: https://renengade.github.io/hashseal/
+repo_url: https://github.com/renengade/hashseal
+repo_name: renengade/hashseal
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+nav:
+  - 首页: index.md
+  - 威胁模型: threat-model.md
+  - 审计与配置: audit.md
+  - 证明与 SBOM: attest.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences

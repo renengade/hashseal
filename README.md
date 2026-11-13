@@ -31,6 +31,7 @@
   - [renew](#renew--续期时间戳)
   - [bundle / unpack](#bundle--unpack--打包与解包)
   - [sbom](#sbom--生成-sbom)
+  - [attest / attest-verify](#attest--attest-verify--intoto-证明)
   - [config](#config--配置)
   - [audit](#audit--审计日志)
 - [目录支持矩阵](#目录支持矩阵)
@@ -90,7 +91,7 @@ hashseal --help
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh \
-  | HASHSEAL_REF=v0.6.0 sh
+  | HASHSEAL_REF=v0.7.0 sh
 ```
 
 `HASHSEAL_REF` 支持分支、tag 或 commit SHA。
@@ -98,7 +99,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 下载包可校验 SHA-256（Release 页面附 `SHA256SUMS`）：
 
 ```bash
-curl -fsSL .../install.sh | HASHSEAL_REF=v0.6.0 HASHSEAL_SHA256=<sha256> sh
+curl -fsSL .../install.sh | HASHSEAL_REF=v0.7.0 HASHSEAL_SHA256=<sha256> sh
 ```
 
 ### 其他安装方式
@@ -120,7 +121,7 @@ export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/a
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
-锁定版本时把 `main` 换成 tag，例如 `v0.6.0`。
+锁定版本时把 `main` 换成 tag，例如 `v0.7.0`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
@@ -282,7 +283,7 @@ cd dist && sha256sum -c ../MANIFEST.sha256
 全局选项：
 
 ```bash
-hashseal --version        # 0.6.0
+hashseal --version        # 0.7.0
 hashseal --help
 ```
 
@@ -611,10 +612,27 @@ hashseal unpack dist.zip -d restored
 ### `sbom` — 生成 SBOM
 
 ```
-hashseal sbom DIR [-o sbom.cdx.json]
+hashseal sbom DIR [-o sbom.cdx.json] [--deps] [--lock PATH]
 ```
 
-从已签名清单生成 CycloneDX 1.5 JSON，再对 SBOM 本身签名即可纳入交付链。
+- 默认生成文件级 CycloneDX 1.5；
+- `--deps` 解析 `uv.lock` / `requirements.txt`，追加依赖组件（name/version/purl）；
+- 生成后可用 `hashseal sign sbom.cdx.json --timestamp` 纳入签名链。
+
+### `attest` / `attest-verify` — in-toto 证明
+
+```
+hashseal attest DIR [-o attestation.json] [-k 私钥] [--password-file]
+hashseal attest-verify FILE [-p 公钥] [--json]
+```
+
+生成标准 in-toto Statement + DSSE envelope：`subject` 是清单中每个文件的 SHA-256，
+`predicate` 记录工具版本、清单哈希、签名者与时间戳哈希。
+
+```bash
+hashseal attest dist -o attestation.json
+hashseal attest-verify attestation.json -p hashseal_public.pem
+```
 
 ### `config` — 配置
 
@@ -633,6 +651,9 @@ pubkey = "~/.config/hashseal/public.pem"
 exclude = ["*.log"]
 follow_symlinks = false
 audit = true
+audit_sink = "both"        # file | syslog | both
+audit_max_bytes = 10485760
+audit_backups = 5
 ```
 
 优先级：命令行 > 环境变量 > 配置文件 > 内置默认值。
@@ -643,7 +664,11 @@ audit = true
 hashseal audit [-n 20]
 ```
 
-日志默认写入 `~/.local/state/hashseal/audit.jsonl`（JSON Lines），可用 `HASHSEAL_AUDIT_LOG` 改路径、`HASHSEAL_NO_AUDIT=1` 或 `--no-audit` 关闭。
+日志默认写入 `~/.local/state/hashseal/audit.jsonl`（JSON Lines），按大小轮转。
+`audit_sink` 可选 `file` / `syslog` / `both`；syslog 仅 Unix，失败不影响主流程。
+可用 `HASHSEAL_AUDIT_LOG` 改路径、`HASHSEAL_NO_AUDIT=1` 或 `--no-audit` 关闭。
+
+文档站：<https://renengade.github.io/hashseal/>
 
 ---
 

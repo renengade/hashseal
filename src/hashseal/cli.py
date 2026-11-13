@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .attest import AttestError, build_statement, sign_statement, verify_envelope
 from .audit import audit_path, write_event
 from .bundle import BundleError, create_bundle, unpack_bundle
 from .config import config_path, load_config
@@ -26,6 +27,7 @@ from .core import (
     die,
     fingerprint_matches,
     generate_keypair,
+    is_encrypted_key,
     load_private,
     load_public,
     parse_record,
@@ -116,7 +118,17 @@ def _audit(args: argparse.Namespace, event: str, **fields: object) -> None:
         return
     if not _cfg(args, "audit", True):
         return
-    write_event(event, **fields)
+    write_event(event, config=getattr(args, "_config", None) or {}, **fields)
+
+
+def _signing_key(args: argparse.Namespace):
+    path = _key_path(args)
+    password = _password(args)
+    if password is None and is_encrypted_key(path) and sys.stdin.isatty():
+        import getpass
+
+        password = getpass.getpass("私钥口令: ")
+    return load_private(path, password)
 
 
 def _collect_targets(args: argparse.Namespace) -> tuple[list[Path], dict[Path, Path]]:
@@ -230,7 +242,7 @@ def cmd_manifest(args: argparse.Namespace) -> int:
 
 
 def cmd_sign(args: argparse.Namespace) -> int:
-    key = load_private(_key_path(args), _password(args))
+    key = _signing_key(args)
 
     if any(Path(n).is_dir() for n in args.files):
         if args.sig:
@@ -914,14 +926,69 @@ def cmd_sbom(args: argparse.Namespace) -> int:
     if not manifest.is_file():
         die(f"{root} 下没有 {MANIFEST_NAME}，请先执行: hashseal sign {root}")
     try:
-        data = build_sbom(root)
-    except ManifestError as exc:
+        data = build_sbom(
+            root,
+            include_deps=args.deps,
+            lock_path=Path(args.lock) if args.lock else None,
+        )
+    except (ManifestError, FileNotFoundError) as exc:
         die(str(exc))
     out = Path(args.output)
     atomic_write_text(out, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
     print(f"已生成 SBOM {out}（{len(data['components'])} 个组件）")
     print(f"下一步：hashseal sign {out}")
     _audit(args, "sbom", path=str(out), ok=True, components=len(data["components"]))
+    return 0
+
+
+def cmd_attest(args: argparse.Namespace) -> int:
+    root = Path(args.dir)
+    key = _signing_key(args)
+    try:
+        statement = build_statement(root, predicate_type=args.predicate_type)
+    except (AttestError, ManifestError) as exc:
+        die(str(exc))
+    envelope = sign_statement(statement, key)
+    out = Path(args.output)
+    atomic_write_text(out, json.dumps(envelope, ensure_ascii=False, indent=2) + "\n")
+    print(f"已生成证明 {out}")
+    print(f"  subjects: {len(statement['subject'])}")
+    print(f"  keyid   : {envelope['signatures'][0]['keyid']}")
+    _audit(args, "attest", path=str(out), ok=True, subjects=len(statement["subject"]))
+    return 0
+
+
+def cmd_attest_verify(args: argparse.Namespace) -> int:
+    path = Path(args.file)
+    if not path.is_file():
+        die(f"找不到证明文件: {path}")
+    try:
+        envelope = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        die(f"证明文件无法解析: {exc}")
+    pub = load_public(_pub_path(args))
+    try:
+        statement = verify_envelope(envelope, pub)
+    except AttestError as exc:
+        if args.json:
+            print(json.dumps({"file": str(path), "ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
+        else:
+            print(f"结果    : ❌ {exc}")
+        return 1
+    summary = {
+        "file": str(path),
+        "ok": True,
+        "subjects": len(statement.get("subject", [])),
+        "predicateType": statement.get("predicateType"),
+        "keyid": envelope["signatures"][0].get("keyid"),
+    }
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    else:
+        print("结果      : ✅ 证明有效")
+        print(f"subjects  : {summary['subjects']}")
+        print(f"类型      : {summary['predicateType']}")
+    _audit(args, "attest-verify", path=str(path), ok=True)
     return 0
 
 
@@ -1063,9 +1130,25 @@ def build_parser() -> argparse.ArgumentParser:
     cf.add_argument("--json", action="store_true")
     cf.set_defaults(func=cmd_config)
 
+    at = sub.add_parser("attest", help="生成 in-toto DSSE 证明")
+    at.add_argument("dir")
+    at.add_argument("-o", "--output", default="attestation.json")
+    at.add_argument("-k", "--key", default=None)
+    at.add_argument("--password-file")
+    at.add_argument("--predicate-type", default="https://hashseal.dev/attestation/v1")
+    at.set_defaults(func=cmd_attest)
+
+    av = sub.add_parser("attest-verify", help="验证 in-toto DSSE 证明")
+    av.add_argument("file")
+    av.add_argument("-p", "--pubkey", default=None)
+    av.add_argument("--json", action="store_true")
+    av.set_defaults(func=cmd_attest_verify)
+
     sb = sub.add_parser("sbom", help="从已签名清单生成 CycloneDX SBOM")
     sb.add_argument("dir")
     sb.add_argument("-o", "--output", default="sbom.cdx.json")
+    sb.add_argument("--deps", action="store_true", help="解析 uv.lock/requirements.txt 加入组件")
+    sb.add_argument("--lock", help="指定依赖清单路径")
     sb.set_defaults(func=cmd_sbom)
 
     au = sub.add_parser("audit", help="查看审计日志")
