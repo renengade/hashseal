@@ -25,6 +25,8 @@ jobs:
 
   publish:
     needs: build
+    # 配置好 PyPI Trusted Publishing 后，在仓库变量里设置 PUBLISH_TO_PYPI=true
+    if: vars.PUBLISH_TO_PYPI == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     steps:

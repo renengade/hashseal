@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1
+
+### Fixed
+
+- 移除测试文件多余的 shebang，修复 CI lint 失败。
+- Release workflow 的 PyPI 发布改为显式开关（`PUBLISH_TO_PYPI=true`），避免未配置时误发布。
+
 ## 0.4.0
 
 ### Changed

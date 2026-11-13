@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
 """hashseal 的最小自测：python3 -m unittest -v test_hashseal"""
-# 修改测试
 
 from __future__ import annotations
 

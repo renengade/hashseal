@@ -84,7 +84,7 @@ hashseal --help
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh \
-  | HASHSEAL_REF=v0.4.0 sh
+  | HASHSEAL_REF=v0.4.1 sh
 ```
 
 `HASHSEAL_REF` 支持分支、tag 或 commit SHA。
@@ -108,7 +108,7 @@ export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/a
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
-锁定版本时把 `main` 换成 tag，例如 `v0.4.0`。
+锁定版本时把 `main` 换成 tag，例如 `v0.4.1`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
@@ -270,7 +270,7 @@ cd dist && sha256sum -c ../MANIFEST.sha256
 全局选项：
 
 ```bash
-hashseal --version        # 0.4.0
+hashseal --version        # 0.4.1
 hashseal --help
 ```
 
