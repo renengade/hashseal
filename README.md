@@ -6,6 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey)
+[![CI](https://github.com/renengade/hashseal/actions/workflows/ci.yml/badge.svg)](https://github.com/renengade/hashseal/actions/workflows/ci.yml)
 
 ---
 
@@ -24,6 +25,8 @@
   - [verify](#verify--验证)
   - [timestamp](#timestamp--申请时间戳)
   - [ots](#ots--opentimestamps)
+  - [diff](#diff--对比清单)
+  - [inspect](#inspect--查看元数据)
 - [目录支持矩阵](#目录支持矩阵)
 - [时间戳深入](#时间戳深入)
 - [退出码与自动化](#退出码与自动化)
@@ -81,7 +84,7 @@ hashseal --help
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh \
-  | HASHSEAL_REF=v0.3.6 sh
+  | HASHSEAL_REF=v0.4.0 sh
 ```
 
 `HASHSEAL_REF` 支持分支、tag 或 commit SHA。
@@ -105,7 +108,7 @@ export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/a
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
-锁定版本时把 `main` 换成 tag，例如 `v0.3.6`。
+锁定版本时把 `main` 换成 tag，例如 `v0.4.0`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
@@ -247,7 +250,8 @@ MANIFEST.sha256.sig      对清单的 Ed25519 签名
 MANIFEST.sha256.sig.tsr  对签名的时间戳
 ```
 
-- 新增、删除、修改任意文件都会导致校验失败；
+- 新增、删除、修改任意文件都会导致校验失败（新增文件会报告“未列入清单”）；
+- 清单中若出现 `..`、绝对路径或重复条目，校验直接拒绝；
 - 一次签名、一次时间戳覆盖整批；
 - 清单是标准 `sha256sum` 格式，可互操作：
 
@@ -266,32 +270,39 @@ cd dist && sha256sum -c ../MANIFEST.sha256
 全局选项：
 
 ```bash
-hashseal --version        # 0.3.6
+hashseal --version        # 0.4.0
 hashseal --help
 ```
 
 ### `keygen` — 生成密钥
 
 ```
-hashseal keygen [--private PATH] [--public PATH] [--force]
+hashseal keygen [--private PATH] [--public PATH] [--password-file PATH] [--force]
 ```
 
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `--private` | `hashseal_private.pem` | 私钥输出路径（PKCS#8 PEM） |
 | `--public` | `hashseal_public.pem` | 公钥输出路径 |
+| `--password-file` | — | 私钥口令文件；给出则私钥加密存储 |
 | `--force` | — | 允许覆盖已存在的密钥文件 |
 
 示例：
 
 ```bash
+# 未加密（简单场景）
 hashseal keygen --private ~/.config/hashseal/private.pem \
                 --public  ~/.config/hashseal/public.pem
+
+# 加密私钥（推荐）
+hashseal keygen --private ~/.config/hashseal/private.pem \
+                --public  ~/.config/hashseal/public.pem \
+                --password-file ~/.config/hashseal/key.pass
 ```
 
 说明：
 
-- 私钥权限设为 `0600`；**不支持口令加密**，请放在加密盘 / KMS / HSM；
+- 私钥权限设为 `0600`；**建议用 `--password-file` 加密私钥**，并放在加密盘 / KMS / HSM；
 - 已存在同名文件时默认拒绝覆盖，避免误毁正在使用的密钥；
 - 路径必须是文件，传目录会明确报错。
 
@@ -358,13 +369,17 @@ hashseal sign FILE|DIR... [选项]
 | --- | --- | --- |
 | `-k, --key` | `hashseal_private.pem` | 私钥路径（当前目录） |
 | `--sig` | `<文件>.sig` | 签名输出路径（单文件或单个目录） |
-| `--signer` | 空 | 署名备注，仅记录，不参与加密 |
+| `--signer` | 空 | 署名信息；v2 起纳入签名，不可篡改 |
 | `--name` | 实际文件名 | 签名时记录的文件名（发布前改名时用） |
 | `--timestamp` | 关 | 签名后立即申请 RFC 3161 时间戳 |
-| `--tsa` | `http://timestamp.digicert.com` | 时间戳服务地址 |
+| `--tsa` | `https://timestamp.digicert.com` | 时间戳服务地址 |
 | `--tsa-ca` | 内置 + 系统 CA | 覆盖时间戳信任根（PEM） |
 | `--timeout` | `30` | 时间戳网络超时（秒） |
+| `--retry` | `2` | TSA 请求失败重试次数 |
 | `--tsr` | `<签名>.tsr` | 时间戳输出路径（需 `--timestamp`） |
+| `--password-file` | — | 私钥口令文件（配合加密私钥） |
+| `--exclude` | — | 目录模式下排除的文件 glob（可重复） |
+| `--follow-symlinks` | 关 | 目录模式下跟随符号链接 |
 | `--force` | — | 覆盖已存在的 `.sig` / `.tsr` |
 
 行为：
@@ -415,7 +430,11 @@ hashseal verify FILE|DIR [选项]
 | `--tsr` | —（目录模式自动探测） | 同时校验时间戳令牌 |
 | `--ts-only` | 关 | 只校验时间戳，不要求 `.sig` |
 | `--tsa-ca` | 内置 + 系统 CA | 时间戳信任根 |
-| `--json` | 关 | 输出机器可读结果（目录模式暂不支持） |
+| `--expect-fingerprint` | — | 要求公钥指纹匹配（CI 防 TOFU） |
+| `--allow-unlisted` | 关 | 允许目录中存在未列入清单的文件 |
+| `--exclude` | — | 目录校验时排除的 glob（可重复） |
+| `--follow-symlinks` | 关 | 目录校验时跟随符号链接 |
+| `--json` | 关 | 输出机器可读结果（含目录模式） |
 
 四种用法：
 
@@ -483,9 +502,10 @@ hashseal timestamp FILE|DIR [选项]
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `-o, --out` | `<目标>.tsr` | 令牌输出路径 |
-| `--tsa` | `http://timestamp.digicert.com` | TSA 地址（可用 `HASHSEAL_TSA` 覆盖） |
+| `--tsa` | `https://timestamp.digicert.com` | TSA 地址（可用 `HASHSEAL_TSA` 覆盖） |
 | `--tsa-ca` | 内置 + 系统 CA | 信任根 PEM |
 | `--timeout` | `30` | 网络超时（秒） |
+| `--retry` | `2` | 失败重试次数 |
 | `--force` | — | 覆盖已存在的 `.tsr` |
 | `--json` | 关 | 输出机器可读结果 |
 
@@ -519,6 +539,31 @@ hashseal ots verify app.py.sig.ots
 
 ---
 
+### `diff` — 对比清单
+
+```
+hashseal diff LEFT RIGHT [--json]
+```
+
+列出两份清单的新增、删除、内容变化；有差异时退出码为 `1`，适合发版对比。
+
+```bash
+hashseal diff old/MANIFEST.sha256 new/MANIFEST.sha256
+```
+
+### `inspect` — 查看元数据
+
+```
+hashseal inspect FILE [--json]
+```
+
+- `.sig`：显示格式、名称、摘要、签名者（标注是否已签名）、本地时间；
+- `.tsr`：显示 TSA、签发时间、序列号、策略、摘要/签名算法。
+
+`inspect` 只解析元数据，不做密码学验证；验证请用 `verify`。
+
+---
+
 ## 目录支持矩阵
 
 | 命令 | 目录 | 行为 |
@@ -531,6 +576,8 @@ hashseal ots verify app.py.sig.ots
 | `verify` | ✅ | 验清单签名/时间戳，再逐文件比对 |
 | `timestamp` | ✅ | 对 `MANIFEST.sha256.sig` 盖章 |
 | `ots` | 透传 | 由 `ots` 客户端决定 |
+| `diff` | — | 直接对比两份清单 |
+| `inspect` | — | 查看 `.sig` / `.tsr` 元数据 |
 
 ---
 
@@ -538,7 +585,7 @@ hashseal ots verify app.py.sig.ots
 
 ### 默认 TSA 与信任根
 
-- 默认 TSA：`http://timestamp.digicert.com`（可用 `--tsa` 或 `HASHSEAL_TSA` 覆盖）；
+- 默认 TSA：`https://timestamp.digicert.com`（可用 `--tsa` 或 `HASHSEAL_TSA` 覆盖）；
 - 默认信任根 = **系统 CA 库 + 内置 freetsa 根**：
   - DigiCert / Sectigo 等公共 TSA 通过系统 CA 库验证；
   - freetsa 通过内置根验证，无需下载。
@@ -637,19 +684,34 @@ A：不能。它只计算公钥指纹；验证目录用 `verify DIR`。
 A：只需要文件 + `.sig`（+ `.tsr`）+ 发送方公钥。验证不需要网络、不需要私钥。
 
 **Q：旧版 `fileproof` 生成的 `.sig` 还能验吗？**
-A：能。hashseal 只读兼容 `fileproof/1` 格式；新签名统一写 `hashseal/1`。
+A：能。hashseal 只读兼容 `fileproof/1` 格式；新签名统一写 `hashseal/2`。
 
 ---
+
+## 项目结构
+
+```
+src/hashseal/
+├── core.py        # 常量、哈希、密钥、签名记录
+├── manifest.py    # 清单生成 / 解析 / 目录校验
+├── tsa.py         # RFC 3161 请求、解析、链校验
+├── cli.py         # 命令行接口
+├── __main__.py    # python -m hashseal
+└── py.typed
+tests/             # pytest + 离线 TSA 夹具
+.github/workflows/ # CI / Release
+```
 
 ## 开发
 
 ```bash
 uv sync
 uv run hashseal --help
-uv run python -m hashseal --version
+uv run pytest -q
+uv run ruff check .
 ```
 
-测试与演示不随发布仓分发，请在本地开发环境运行。
+CI 在 Linux/macOS × Python 3.10–3.13 上运行测试与静态检查；打 `v*` tag 时由 release workflow 构建并发布。
 
 ---
 

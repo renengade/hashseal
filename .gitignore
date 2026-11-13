@@ -12,7 +12,15 @@ dist/
 *.sig
 *.tsr
 *.ots
+!tests/fixtures/*.sig
+!tests/fixtures/*.tsr
+!tests/fixtures/*.pem
 
 # 系统杂项
 .DS_Store
 Thumbs.db
+
+# 测试 / 覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
