@@ -8,6 +8,8 @@
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
+默认安装最新 release；生产环境建议用 `HASHSEAL_REF=v0.7.0` 锁定版本并校验 `HASHSEAL_SHA256`。
+
 ## 三分钟上手
 
 ```bash

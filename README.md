@@ -70,12 +70,16 @@
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
+**默认安装 GitHub 上最新的 release**：脚本通过 GitHub API 解析 latest tag，
+不需要手动指定版本；API 不可用或限流时回退到 `main` 并给出警告。
+
 脚本会：
 
 1. 检测 `uv`，没有则自动安装；
-2. 下载源码包；
-3. 安装到 uv 的独立工具环境（不污染系统 Python）；
-4. 把 `hashseal` 链接到 `~/.local/bin`，必要时提示/写入 `PATH`。
+2. 解析最新 release（或使用 `HASHSEAL_REF`）；
+3. 下载源码包；
+4. 安装到 uv 的独立工具环境（不污染系统 Python）；
+5. 把 `hashseal` 链接到 `~/.local/bin`，必要时提示/写入 `PATH`。
 
 > 安装脚本是 POSIX `sh`（`#!/bin/sh`），`| sh` 与 `| bash` 都能运行；
 > Alpine / BusyBox 等没有 bash 的环境也能用，所以默认写 `| sh`。
@@ -94,7 +98,12 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
   | HASHSEAL_REF=v0.7.0 sh
 ```
 
-`HASHSEAL_REF` 支持分支、tag 或 commit SHA。
+`HASHSEAL_REF` 支持 tag、分支或 commit SHA：
+
+- 锁定发布：`HASHSEAL_REF=v0.7.0`
+- 跟随开发分支：`HASHSEAL_REF=main`
+- 最新 release 是移动目标；生产环境建议锁定 tag 并校验 `HASHSEAL_SHA256`
+- API 限流时可设置 `GITHUB_TOKEN` 提高额度
 
 下载包可校验 SHA-256（Release 页面附 `SHA256SUMS`）：
 

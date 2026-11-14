@@ -4,15 +4,21 @@
 #   curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 #
 # 安装到 uv 的独立工具环境（不污染系统 Python），并链接 hashseal 到 PATH。
+#
+# 默认安装 GitHub 上最新的 release（通过 API 解析 tag）；
 # 可用环境变量覆盖：
-#   HASHSEAL_REF=v0.2.0   指定 tag/分支（生产环境建议锁定 tag）
+#   HASHSEAL_REF=v0.7.0   指定 tag/分支（生产环境建议锁定 tag；main 表示跟随开发分支）
 #   HASHSEAL_REPO=owner/repo
-#   HASHSEAL_URL=<url>    直接指定源码包地址
+#   HASHSEAL_URL=<url>    直接指定源码包地址（跳过 latest 解析）
+#   HASHSEAL_API_URL=<url>        覆盖 latest release API
+#   HASHSEAL_ARCHIVE_BASE=<url>   覆盖源码包下载基地址
+#   HASHSEAL_SHA256=<hex>         校验下载包（Release 页 SHA256SUMS）
+#   GITHUB_TOKEN=<token>          提高 GitHub API 速率限制
 set -eu
 
 REPO="${HASHSEAL_REPO:-renengade/hashseal}"
-REF="${HASHSEAL_REF:-main}"
-URL="${HASHSEAL_URL:-https://github.com/$REPO/archive/$REF.tar.gz}"
+API_URL="${HASHSEAL_API_URL:-https://api.github.com/repos/$REPO/releases/latest}"
+ARCHIVE_BASE="${HASHSEAL_ARCHIVE_BASE:-https://github.com/$REPO/archive}"
 MARKER="hashseal installer"
 
 say() { printf '%s\n' "$*"; }
@@ -20,6 +26,37 @@ die() { printf '错误: %s\n' "$*" >&2; exit 1; }
 
 command -v curl >/dev/null 2>&1 || die "需要 curl"
 command -v tar  >/dev/null 2>&1 || die "需要 tar"
+
+resolve_latest() {
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        json="$(curl -fsSL -m 20 -H "Authorization: Bearer $GITHUB_TOKEN" "$API_URL" 2>/dev/null)" || return 1
+    else
+        json="$(curl -fsSL -m 20 "$API_URL" 2>/dev/null)" || return 1
+    fi
+    printf '%s\n' "$json" \
+        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        | head -n 1
+}
+
+if [ -n "${HASHSEAL_URL:-}" ]; then
+    REF="${HASHSEAL_REF:-custom}"
+    URL="$HASHSEAL_URL"
+elif [ -n "${HASHSEAL_REF:-}" ]; then
+    REF="$HASHSEAL_REF"
+    URL="$ARCHIVE_BASE/$REF.tar.gz"
+else
+    REF="$(resolve_latest || true)"
+    case "$REF" in
+        *[!A-Za-z0-9._-]*) REF="" ;;
+    esac
+    if [ -z "$REF" ]; then
+        REF="main"
+        say "警告: 无法获取 latest release（API 不可用或限流），回退到 main 分支"
+    else
+        say "使用最新发布: $REF"
+    fi
+    URL="$ARCHIVE_BASE/$REF.tar.gz"
+fi
 
 # 1) 确保有 uv
 if ! command -v uv >/dev/null 2>&1; then
