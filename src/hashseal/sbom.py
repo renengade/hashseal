@@ -11,7 +11,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
 from . import __version__
-from .core import now_iso, warn
+from .core import fmt_time, now_iso, warn
 from .manifest import ManifestError, find_manifest, parse_manifest
 
 _REQ_RE = re.compile(r"^([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?\s*==\s*([^\s;#]+)")
@@ -115,12 +115,16 @@ def build_sbom(
     if include_deps:
         components.extend(dependency_components(root, lock_path))
 
+    timestamp = now_iso()
     return {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
         "version": 1,
         "metadata": {
-            "timestamp": now_iso(),
+            "timestamp": timestamp,
+            "properties": [
+                {"name": "hashseal:local_time", "value": fmt_time(timestamp)}
+            ],
             "tools": [{"vendor": "hashseal", "name": "hashseal", "version": __version__}],
             "component": {"type": "application", "name": root.name},
         },

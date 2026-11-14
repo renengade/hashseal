@@ -131,6 +131,24 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def fmt_time(value: str | None) -> str:
+    """把 ISO 时间显示为“本地时间（UTC ...）”，便于人工核对。"""
+    if not value:
+        return "未记录"
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return str(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone()
+    utc = dt.astimezone(timezone.utc)
+    return (
+        f"{local.strftime('%Y-%m-%d %H:%M:%S %z')}"
+        f"（UTC {utc.strftime('%Y-%m-%d %H:%M:%S')}）"
+    )
+
+
 def atomic_write_bytes(path: Path, data: bytes, mode: int | None = None) -> None:
     """原子写入：同目录临时文件 + fsync + os.replace，避免半写文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)

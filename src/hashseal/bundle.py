@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from .core import (
+    fmt_time,
     load_public,
     parse_record,
     public_fingerprint,
@@ -80,9 +81,11 @@ def create_bundle(
     manifest_rel = manifest.relative_to(root).as_posix()
     sig_rel = sig.relative_to(root).as_posix()
     tsr_rel = tsr.relative_to(root).as_posix()
+    created = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     meta = {
         "format": BUNDLE_FORMAT,
-        "created": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created": created,
+        "created_local": fmt_time(created),
         "root": root.name,
         "manifest": manifest_rel,
         "files": len(entries),

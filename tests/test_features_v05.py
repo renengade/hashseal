@@ -68,6 +68,39 @@ class FeatureTest(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("未列入清单", out)
 
+    def test_audit_command_formats_time(self) -> None:
+        log = self.tmp / "audit-command.jsonl"
+        with mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}):
+            self._sign()
+            rc, out = self._run("audit")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("UTC", out)
+        rc, out = self._run("audit", "--json")
+        self.assertIn('"ts_local"', out)
+
+    def test_inspect_shows_local_and_utc(self) -> None:
+        self._sign()
+        rc, out = self._run("inspect", str(self.target) + ".sig")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("UTC", out)
+
+    def test_hash_is_audited(self) -> None:
+        log = self.tmp / "hash-audit.jsonl"
+        with mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}):
+            rc, out = self._run("hash", str(self.target))
+        self.assertEqual(rc, 0, out)
+        record = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(record["event"], "hash")
+        self.assertEqual(record["files"], 1)
+        self.assertTrue(record["ok"])
+
+    def test_audit_context_has_operator(self) -> None:
+        with mock.patch.object(audit, "_primary_ip", return_value="198.51.100.7"):
+            context = audit.audit_context()
+        self.assertTrue(context["user"])
+        self.assertEqual(context["ip"], "198.51.100.7")
+        self.assertTrue(context["hostname"])
+
     def test_tsa_fallback(self) -> None:
         out = self.tmp / "fallback.tsr"
         info = {"nonce": None, "tsa": "Fake TSA", "chain": "ok"}
@@ -120,20 +153,61 @@ class FeatureTest(unittest.TestCase):
     # ----------------------------------------------------------------- audit
     def test_audit_log_written(self) -> None:
         log = self.tmp / "audit.jsonl"
-        with mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}):
+        with (
+            mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}),
+            mock.patch.object(audit, "_primary_ip", return_value="203.0.113.9"),
+        ):
             self._sign()
         line = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(line["event"], "sign")
         self.assertTrue(line["ok"])
+        self.assertIn("UTC", line["ts_local"])
+        self.assertTrue(line["user"])
+        self.assertEqual(line["ip"], "203.0.113.9")
+        self.assertTrue(line["hostname"])
 
     def test_audit_rotation(self) -> None:
         log = self.tmp / "rot.jsonl"
-        cfg = {"audit_sink": "file", "audit_file": str(log), "audit_max_bytes": 200, "audit_backups": 2}
+        cfg = {"audit_sink": "file", "audit_file": str(log), "audit_max_bytes": 200}
         with mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}):
             for i in range(6):
                 audit.write_event("test", config=cfg, n=i)
         self.assertTrue(log.is_file())
-        self.assertTrue(Path(str(log) + ".1").is_file())
+        self.assertTrue(list(log.parent.glob("rot-*.jsonl")))
+
+    def test_audit_rotates_by_entry_date(self) -> None:
+        from datetime import datetime, timedelta
+
+        log = self.tmp / "daily.jsonl"
+        yesterday = (datetime.now() - timedelta(days=1)).date().isoformat()
+        log.write_text(
+            '{"ts":"' + yesterday + 'T10:00:00+00:00","event":"old"}\n',
+            encoding="utf-8",
+        )
+        cfg = {"audit_sink": "file", "audit_file": str(log)}
+        with mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}):
+            audit.write_event("new", config=cfg)
+        self.assertTrue((self.tmp / f"daily-{yesterday}.jsonl").is_file())
+        self.assertIn("new", log.read_text(encoding="utf-8"))
+
+    def test_audit_retention_deletes_old_archive(self) -> None:
+        log = self.tmp / "retain.jsonl"
+        old = self.tmp / "retain-2000-01-01.jsonl"
+        old.write_text("{}\n", encoding="utf-8")
+        cfg = {"audit_sink": "file", "audit_file": str(log), "audit_retention_days": 90}
+        with mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}):
+            audit.write_event("test", config=cfg)
+        self.assertFalse(old.exists())
+
+    def test_audit_reads_archived_files(self) -> None:
+        log = self.tmp / "read.jsonl"
+        archive = self.tmp / "read-2026-11-13.jsonl"
+        archive.write_text('{"event":"old"}\n', encoding="utf-8")
+        log.write_text('{"event":"new"}\n', encoding="utf-8")
+        lines = audit.read_events(log, 10)
+        self.assertEqual(len(lines), 2)
+        self.assertIn("old", lines[0])
+        self.assertIn("new", lines[1])
 
     def test_syslog_sink_does_not_write_file(self) -> None:
         log = self.tmp / "syslog.jsonl"
@@ -187,6 +261,8 @@ class FeatureTest(unittest.TestCase):
         self.assertEqual(data["bomFormat"], "CycloneDX")
         self.assertEqual(len(data["components"]), 2)
         self.assertTrue(any(c["name"] == "x.txt" for c in data["components"]))
+        props = {p["name"]: p["value"] for p in data["metadata"]["properties"]}
+        self.assertIn("UTC", props["hashseal:local_time"])
 
     def test_sbom_with_dependencies(self) -> None:
         d = self._dir()

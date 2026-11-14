@@ -193,6 +193,7 @@ class HardeningTest(unittest.TestCase):
         rc, out = self._run("inspect", str(token))
         self.assertEqual(rc, 0, out)
         self.assertIn("gen_time", out)
+        self.assertIn("UTC", out)
 
 
 if __name__ == "__main__":

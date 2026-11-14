@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.1
+
+### Changed
+
+- 所有人工展示时间统一为“本地时间 + UTC”，例如
+  `2026-11-14 09:55:23 +0800（UTC 2026-11-14 01:55:23）`：
+  `inspect`、`verify`、`audit`、`sbom`、`bundle`。
+- 机器可读字段（JSON `ts` / `gen_time` / CycloneDX `timestamp`）保持 RFC3339 不变。
+- 审计日志记录操作者 `user` / `uid` / `hostname` / `ip`，SSH 场景记录 `ssh_client`，
+  `sudo` 场景记录 `sudo_user`。
+- 审计日志按天/大小滚动，默认保留 90 天（`audit_retention_days`），过期归档自动删除；
+  `audit` 命令会读取活跃文件与归档。
+
 ## 0.8.0
 
 ### Changed

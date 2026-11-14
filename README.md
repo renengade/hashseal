@@ -95,12 +95,12 @@ hashseal --help
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh \
-  | HASHSEAL_REF=v0.8.0 sh
+  | HASHSEAL_REF=v0.8.1 sh
 ```
 
 `HASHSEAL_REF` 支持 tag、分支或 commit SHA：
 
-- 锁定发布：`HASHSEAL_REF=v0.8.0`
+- 锁定发布：`HASHSEAL_REF=v0.8.1`
 - 跟随开发分支：`HASHSEAL_REF=main`
 - 最新 release 是移动目标；生产环境建议锁定 tag 并校验 `HASHSEAL_SHA256`
 - API 限流时可设置 `GITHUB_TOKEN` 提高额度
@@ -108,7 +108,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 下载包可校验 SHA-256（Release 页面附 `SHA256SUMS`）：
 
 ```bash
-curl -fsSL .../install.sh | HASHSEAL_REF=v0.8.0 HASHSEAL_SHA256=<sha256> sh
+curl -fsSL .../install.sh | HASHSEAL_REF=v0.8.1 HASHSEAL_SHA256=<sha256> sh
 ```
 
 ### 其他安装方式
@@ -130,7 +130,7 @@ export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/a
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
-锁定版本时把 `main` 换成 tag，例如 `v0.8.0`。
+锁定版本时把 `main` 换成 tag，例如 `v0.8.1`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
@@ -296,7 +296,7 @@ cd dist && sha256sum -c .hashseal/MANIFEST.sha256
 全局选项：
 
 ```bash
-hashseal --version        # 0.8.0
+hashseal --version        # 0.8.1
 hashseal --help
 ```
 
@@ -584,7 +584,8 @@ hashseal inspect FILE [--json]
 ```
 
 - `.sig`：显示格式、名称、摘要、签名者（标注是否已签名）、本地时间；
-- `.tsr`：显示 TSA、签发时间、序列号、策略、摘要/签名算法。
+- `.tsr`：显示 TSA、签发时间、序列号、策略、摘要/签名算法；
+- 时间统一显示为“本地时间 + UTC”，例如 `2026-11-14 09:55:23 +0800（UTC 2026-11-14 01:55:23）`。
 
 `inspect` 只解析元数据，不做密码学验证；验证请用 `verify`。
 
@@ -665,7 +666,7 @@ exclude = ["*.log"]
 follow_symlinks = false
 audit_sink = "both"        # file | syslog | both
 audit_max_bytes = 10485760
-audit_backups = 5
+audit_retention_days = 90
 ```
 
 优先级：命令行 > 环境变量 > 配置文件 > 内置默认值。
@@ -676,8 +677,10 @@ audit_backups = 5
 hashseal audit [-n 20]
 ```
 
-日志默认写入 `~/.local/state/hashseal/audit.jsonl`（JSON Lines），按大小轮转。
-`audit_sink` 可选 `file` / `syslog` / `both`；syslog 仅 Unix，失败不影响主流程。
+日志默认写入 `~/.local/state/hashseal/audit.jsonl`（JSON Lines），按天/大小滚动，默认保留 90 天。
+每条记录包含操作者 `user` / `uid` / `hostname` / 本机 `ip`；SSH 场景额外记录
+`ssh_client`，`sudo` 场景记录 `sudo_user`。
+`audit_sink` 可选 `file` / `syslog` / `both`；syslog 仅 Unix，失败时回退本地文件。
 审计日志始终开启，不可关闭；可用 `HASHSEAL_AUDIT_LOG` 修改路径。
 
 文档站：<https://renengade.github.io/hashseal/>

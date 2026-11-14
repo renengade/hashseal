@@ -10,7 +10,6 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
 from pathlib import Path
 
 from cryptography import x509 as cx509
@@ -23,6 +22,7 @@ from .core import (
     MANIFEST_NAME,
     atomic_write_bytes,
     die,
+    fmt_time,
     sha256_file,
     warn,
 )
@@ -508,24 +508,8 @@ def resolve_ca(explicit: str | None) -> tuple[bytes | None, str, bool]:
     return pem, "内置 freetsa 根证书", False
 
 
-def _fmt_gen_time(iso_value: str) -> str:
-    """TSA 时间按本地时区显示，并附 UTC，避免 +00:00 被误读。"""
-    try:
-        dt = datetime.fromisoformat(iso_value)
-    except (TypeError, ValueError):
-        return str(iso_value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    local = dt.astimezone()
-    utc = dt.astimezone(timezone.utc)
-    return (
-        f"{local.strftime('%Y-%m-%d %H:%M:%S %z')}"
-        f"（UTC {utc.strftime('%Y-%m-%d %H:%M:%S')}）"
-    )
-
-
 def _print_token_info(info: dict) -> None:
-    print(f"时间          : {_fmt_gen_time(info['gen_time'])}")
+    print(f"时间          : {fmt_time(info['gen_time'])}")
     print(f"TSA           : {info['tsa']}")
     if info.get("tsa_url"):
         print(f"TSA 地址      : {info['tsa_url']}")
