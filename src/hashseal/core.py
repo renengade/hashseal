@@ -26,9 +26,15 @@ HASH = "sha256"
 CHUNK = 8 << 20  # 8 MiB
 
 MANIFEST_NAME = "MANIFEST.sha256"
+META_DIR = ".hashseal"
 DEFAULT_PRIVATE = "hashseal_private.pem"
 DEFAULT_PUBLIC = "hashseal_public.pem"
-DEFAULT_TSA = "https://timestamp.digicert.com"
+DEFAULT_TSA = "http://timestamp.digicert.com"
+# 默认 TSA 不可达时按顺序回退
+DEFAULT_TSA_FALLBACKS = (
+    "http://timestamp.sectigo.com",
+    "https://freetsa.org/tsr",
+)
 
 # 目录遍历时永远跳过的缓存目录与签名产物
 SKIP_DIRS = {

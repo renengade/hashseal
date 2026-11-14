@@ -17,7 +17,7 @@ from .core import (
     public_fingerprint,
     sha256_file,
 )
-from .manifest import parse_manifest
+from .manifest import find_manifest, parse_manifest
 
 DSSE_PAYLOAD_TYPE = "application/vnd.in-toto+json"
 STATEMENT_TYPE = "https://in-toto.io/Statement/v1"
@@ -44,9 +44,12 @@ def pae(payload_type: str, payload: bytes) -> bytes:
 
 
 def build_statement(root: Path, *, predicate_type: str = DEFAULT_PREDICATE) -> dict:
-    manifest = root / MANIFEST_NAME
+    found = find_manifest(root)
+    if found is None:
+        raise AttestError(f"{root} 尚未签名（先执行 hashseal sign {root}）")
+    manifest, _meta_dir = found
     sig = Path(str(manifest) + ".sig")
-    if not manifest.is_file() or not sig.is_file():
+    if not sig.is_file():
         raise AttestError(f"{root} 尚未签名（先执行 hashseal sign {root}）")
     entries = parse_manifest(manifest)
     record = parse_record(sig)

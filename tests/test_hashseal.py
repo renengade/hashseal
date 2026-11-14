@@ -144,7 +144,7 @@ class FileProofTest(unittest.TestCase):
         self.assertIn("目录", out)
 
     def test_default_tsa_is_digicert(self) -> None:
-        self.assertEqual(hashseal.DEFAULT_TSA, "https://timestamp.digicert.com")
+        self.assertEqual(hashseal.DEFAULT_TSA, "http://timestamp.digicert.com")
 
     def test_directory_sign_and_verify(self) -> None:
         d = self.tmp / "pkg"
@@ -154,9 +154,9 @@ class FileProofTest(unittest.TestCase):
 
         rc, out = self._run("sign", str(d), "-k", str(self.priv), "--force")
         self.assertEqual(rc, 0, out)
-        self.assertTrue((d / "MANIFEST.sha256").is_file())
-        self.assertTrue((d / "MANIFEST.sha256.sig").is_file())
-        self.assertNotIn(".sig", (d / "MANIFEST.sha256").read_text(encoding="utf-8"))
+        self.assertTrue((d / ".hashseal" / "MANIFEST.sha256").is_file())
+        self.assertTrue((d / ".hashseal" / "MANIFEST.sha256.sig").is_file())
+        self.assertNotIn(".sig", (d / ".hashseal" / "MANIFEST.sha256").read_text(encoding="utf-8"))
 
         rc, out = self._run("verify", str(d), "-p", str(self.pub))
         self.assertEqual(rc, 0, out)
@@ -167,8 +167,8 @@ class FileProofTest(unittest.TestCase):
         d.mkdir()
         (d / "a.txt").write_text("v1\n", encoding="utf-8")
         self._run("sign", str(d), "-k", str(self.priv))
-        manifest = d / "MANIFEST.sha256"
-        sig = d / "MANIFEST.sha256.sig"
+        manifest = d / ".hashseal" / "MANIFEST.sha256"
+        sig = d / ".hashseal" / "MANIFEST.sha256.sig"
         before = (manifest.read_bytes(), sig.read_bytes())
 
         (d / "a.txt").write_text("v2\n", encoding="utf-8")
@@ -219,7 +219,7 @@ class FileProofTest(unittest.TestCase):
         self.assertEqual(rc, 2, out)
         self.assertIn("找不到时间戳令牌", out)
 
-        shutil.copy2(FIXTURES / "app.py.sig.tsr", d / "MANIFEST.sha256.sig.tsr")
+        shutil.copy2(FIXTURES / "app.py.sig.tsr", d / ".hashseal" / "MANIFEST.sha256.sig.tsr")
         rc, out = self._run("verify", str(d), "--ts-only")
         self.assertEqual(rc, 1, out)
         self.assertIn("messageImprint", out)
@@ -257,8 +257,8 @@ class FileProofTest(unittest.TestCase):
                 "--timestamp", "--timeout", "1",
             )
         self.assertEqual(rc, 1, out)
-        self.assertTrue((d / "MANIFEST.sha256").is_file())
-        self.assertTrue((d / "MANIFEST.sha256.sig").is_file())
+        self.assertTrue((d / ".hashseal" / "MANIFEST.sha256").is_file())
+        self.assertTrue((d / ".hashseal" / "MANIFEST.sha256.sig").is_file())
 
     def test_directory_verify_json(self) -> None:
         d = self.tmp / "pkg"

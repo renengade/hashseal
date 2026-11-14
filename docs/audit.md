@@ -6,14 +6,13 @@
 
 ```toml
 [hashseal]
-tsa = "https://timestamp.digicert.com"
+tsa = "http://timestamp.digicert.com"
 tsa_ca = "/path/to/ca.pem"
 key = "~/.config/hashseal/private.pem"
 pubkey = "~/.config/hashseal/public.pem"
 exclude = ["*.log"]
 follow_symlinks = false
 
-audit = true
 audit_sink = "both"          # file | syslog | both
 audit_file = "~/.local/state/hashseal/audit.jsonl"
 audit_max_bytes = 10485760
@@ -28,18 +27,19 @@ audit_facility = "user"
 默认写 JSON Lines：
 
 ```json
-{"ts":"2026-11-13T12:00:00+00:00","event":"sign","path":"dist/MANIFEST.sha256","ok":true,"timestamp":true}
+{"ts":"2026-11-13T12:00:00+00:00","event":"sign","path":"dist/.hashseal/MANIFEST.sha256","ok":true,"timestamp":true}
 ```
 
+审计日志始终开启，不提供关闭开关。
+
 - `audit_sink=file`：本地文件，按大小轮转（默认 10 MiB × 5）；
-- `audit_sink=syslog`：写入系统 syslog（Unix），不写本地文件；
+- `audit_sink=syslog`：写入系统 syslog（Unix）；不可用时回退本地文件；
 - `audit_sink=both`：两边都写，syslog 失败不影响文件。
 
 环境变量：
 
 | 变量 | 作用 |
 | --- | --- |
-| `HASHSEAL_NO_AUDIT=1` | 完全关闭 |
 | `HASHSEAL_AUDIT_SINK` | 覆盖 sink |
 | `HASHSEAL_AUDIT_LOG` | 覆盖文件路径 |
 | `HASHSEAL_AUDIT_MAX_BYTES` | 轮转阈值 |

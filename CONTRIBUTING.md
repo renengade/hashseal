@@ -12,6 +12,7 @@ uv run hashseal --help
 ```bash
 uv run ruff check .
 uv run pytest -q
+uv run --group docs mkdocs build --strict
 ```
 
 ## 约定

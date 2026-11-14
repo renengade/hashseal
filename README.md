@@ -95,12 +95,12 @@ hashseal --help
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh \
-  | HASHSEAL_REF=v0.7.0 sh
+  | HASHSEAL_REF=v0.8.0 sh
 ```
 
 `HASHSEAL_REF` 支持 tag、分支或 commit SHA：
 
-- 锁定发布：`HASHSEAL_REF=v0.7.0`
+- 锁定发布：`HASHSEAL_REF=v0.8.0`
 - 跟随开发分支：`HASHSEAL_REF=main`
 - 最新 release 是移动目标；生产环境建议锁定 tag 并校验 `HASHSEAL_SHA256`
 - API 限流时可设置 `GITHUB_TOKEN` 提高额度
@@ -108,7 +108,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 下载包可校验 SHA-256（Release 页面附 `SHA256SUMS`）：
 
 ```bash
-curl -fsSL .../install.sh | HASHSEAL_REF=v0.7.0 HASHSEAL_SHA256=<sha256> sh
+curl -fsSL .../install.sh | HASHSEAL_REF=v0.8.0 HASHSEAL_SHA256=<sha256> sh
 ```
 
 ### 其他安装方式
@@ -130,7 +130,7 @@ export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/a
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
-锁定版本时把 `main` 换成 tag，例如 `v0.7.0`。
+锁定版本时把 `main` 换成 tag，例如 `v0.8.0`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
@@ -181,7 +181,7 @@ hashseal sign app.py --signer "A <a@example.com>"
 ### 3. 验证
 
 ```bash
-hashseal verify app.py --pubkey hashseal_public.pem
+hashseal verify app.py -k hashseal_public.pem
 ```
 
 ```
@@ -221,9 +221,12 @@ hashseal verify dist/               # 清单签名/时间戳 + 逐文件校验
 
 ```
 dist/
-├── MANIFEST.sha256          每个文件的 SHA-256
-├── MANIFEST.sha256.sig      对清单的签名
-└── MANIFEST.sha256.sig.tsr  对清单签名的时间戳
+├── a.txt
+├── b.txt
+└── .hashseal/
+    ├── MANIFEST.sha256          每个文件的 SHA-256
+    ├── MANIFEST.sha256.sig      对清单的签名
+    └── MANIFEST.sha256.sig.tsr  对清单签名的时间戳
 ```
 
 ---
@@ -236,7 +239,7 @@ dist/
 | --- | --- | --- |
 | `app.py.sig` | JSON：格式版本、算法、摘要、大小、文件名、签名者、签名 | 内容完整性 + 来源 |
 | `app.py.sig.tsr` | RFC 3161 `TimeStampResp`（DER） | 签名在何时已存在 |
-| `MANIFEST.sha256` | `sha256sum` 格式的清单 | 用一个对象绑定整批文件 |
+| `.hashseal/MANIFEST.sha256` | `sha256sum` 格式的清单 | 用一个对象绑定整批文件（旧版根目录布局仍兼容） |
 
 `.sig` 是自描述 JSON，但**判定只依赖真实文件 + 公钥**；JSON 里的字段被改也骗不过验证
 （有专门的单元测试覆盖这一点）。
@@ -267,9 +270,10 @@ openssl pkey -pubin -in public.pem -outform DER | openssl dgst -sha256 -binary |
 目录签名因此采用清单打包：
 
 ```
-MANIFEST.sha256          每个文件的 SHA-256
-MANIFEST.sha256.sig      对清单的 Ed25519 签名
-MANIFEST.sha256.sig.tsr  对签名的时间戳
+.hashseal/
+├── MANIFEST.sha256          每个文件的 SHA-256
+├── MANIFEST.sha256.sig      对清单的 Ed25519 签名
+└── MANIFEST.sha256.sig.tsr  对签名的时间戳
 ```
 
 - 新增、删除、修改任意文件都会导致校验失败（新增文件会报告“未列入清单”）；
@@ -278,7 +282,7 @@ MANIFEST.sha256.sig.tsr  对签名的时间戳
 - 清单是标准 `sha256sum` 格式，可互操作：
 
 ```bash
-cd dist && sha256sum -c ../MANIFEST.sha256
+cd dist && sha256sum -c .hashseal/MANIFEST.sha256
 ```
 
 ### 时间戳为什么盖在 `.sig` 上
@@ -292,7 +296,7 @@ cd dist && sha256sum -c ../MANIFEST.sha256
 全局选项：
 
 ```bash
-hashseal --version        # 0.7.0
+hashseal --version        # 0.8.0
 hashseal --help
 ```
 
@@ -331,7 +335,7 @@ hashseal keygen --private ~/.config/hashseal/private.pem \
 ### `fingerprint` — 公钥指纹
 
 ```
-hashseal fingerprint [PUBLIC]
+hashseal fingerprint [PUBLIC] [-k PATH]
 ```
 
 打印 `SHA256:...` 形式的公钥指纹；不传参数时读取 `./hashseal_public.pem`。
@@ -369,7 +373,7 @@ hashseal manifest PATH... [-o OUTPUT] [--base DIR]
 | `--base` | — | 记录相对路径的基准目录 |
 
 ```bash
-hashseal manifest dist/ -o dist/MANIFEST.sha256 --base dist
+hashseal manifest dist/ -o dist/.hashseal/MANIFEST.sha256 --base dist
 ```
 
 生成的格式：
@@ -394,7 +398,7 @@ hashseal sign FILE|DIR... [选项]
 | `--signer` | 空 | 署名信息；v2 起纳入签名，不可篡改 |
 | `--name` | 实际文件名 | 签名时记录的文件名（发布前改名时用） |
 | `--timestamp` | 关 | 签名后立即申请 RFC 3161 时间戳 |
-| `--tsa` | `https://timestamp.digicert.com` | 时间戳服务地址 |
+| `--tsa` | DigiCert → Sectigo → freetsa | 时间戳服务地址；可逗号分隔或重复指定 |
 | `--tsa-ca` | 内置 + 系统 CA | 覆盖时间戳信任根（PEM） |
 | `--timeout` | `30` | 时间戳网络超时（秒） |
 | `--retry` | `2` | TSA 请求失败重试次数 |
@@ -407,7 +411,7 @@ hashseal sign FILE|DIR... [选项]
 行为：
 
 - **单文件** → 生成 `<文件>.sig`；
-- **目录** → 自动生成 `MANIFEST.sha256`，只签清单；目录输入不接受 `--sig` / `--name`；
+- **目录** → 自动生成 `.hashseal/MANIFEST.sha256`，只签清单；目录输入不接受 `--sig` / `--name`；
 - 可以混合传入多个文件 / 目录；`--sig`、`--tsr` 仅适用于单目标；
 - **重复签名**必须加 `--force`。未加 `--force` 时会在改动任何文件**之前**退出（退出码 2），
   不会留下"清单已更新、签名还是旧的"半更新状态；
@@ -447,7 +451,7 @@ hashseal verify FILE|DIR [选项]
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `--sig` | `<文件>.sig` | 签名文件路径 |
-| `-p, --pubkey` | `hashseal_public.pem` | 公钥 PEM |
+| `-k, --key` | `hashseal_public.pem` | 公钥 PEM；`-p/--pubkey` 为兼容别名 |
 | `--name` | 实际文件名 | 文件被改名时，指定签名时记录的原文件名 |
 | `--tsr` | —（目录模式自动探测） | 同时校验时间戳令牌 |
 | `--ts-only` | 关 | 只校验时间戳，不要求 `.sig` |
@@ -524,7 +528,7 @@ hashseal timestamp FILE|DIR [选项]
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `-o, --out` | `<目标>.tsr` | 令牌输出路径 |
-| `--tsa` | `https://timestamp.digicert.com` | TSA 地址（可用 `HASHSEAL_TSA` 覆盖） |
+| `--tsa` | DigiCert → Sectigo → freetsa | TSA 地址；可逗号分隔（可用 `HASHSEAL_TSA` 覆盖） |
 | `--tsa-ca` | 内置 + 系统 CA | 信任根 PEM |
 | `--timeout` | `30` | 网络超时（秒） |
 | `--retry` | `2` | 失败重试次数 |
@@ -535,13 +539,13 @@ hashseal timestamp FILE|DIR [选项]
 
 | 目录状态 | 盖章对象 | 含义 |
 | --- | --- | --- |
-| 有 `MANIFEST.sha256.sig` | 清单签名 | 证明**签名**在某时刻已存在（推荐） |
-| 只有 `MANIFEST.sha256` | 清单本身，并警告 | 只证明清单存在，未证明来源 |
+| 有 `.hashseal/MANIFEST.sha256.sig` | 清单签名 | 证明**签名**在某时刻已存在（推荐） |
+| 只有 `.hashseal/MANIFEST.sha256` | 清单本身，并警告 | 只证明清单存在，未证明来源 |
 | 都没有 | 报错 | 先执行 `hashseal sign DIR` |
 
 ```bash
 hashseal timestamp app.py.sig
-hashseal timestamp dist/            # 对 dist/MANIFEST.sha256.sig 盖章
+hashseal timestamp dist/            # 对 dist/.hashseal/MANIFEST.sha256.sig 盖章
 hashseal timestamp dist/ --force    # 重新盖章（续期 / 换 TSA）
 ```
 
@@ -589,7 +593,7 @@ hashseal inspect FILE [--json]
 ### `status` — 快速检查
 
 ```
-hashseal status FILE|DIR [--sig PATH] [-p PUBKEY] [--json]
+hashseal status FILE|DIR [--sig PATH] [-k KEY] [--json]
 ```
 
 只验证签名和清单，不读取时间戳、不联网；适合提交前或 CI 的快速门禁。
@@ -605,8 +609,8 @@ hashseal renew FILE|DIR [--tsa URL] [--force]
 ### `bundle` / `unpack` — 打包与解包
 
 ```
-hashseal bundle DIR -o out.zip [-p PUBKEY] [--include-pubkey] [--allow-unlisted]
-hashseal unpack out.zip -d DIR [--force] [--no-verify]
+hashseal bundle DIR -o out.zip [-k KEY] [--include-pubkey] [--allow-unlisted]
+hashseal unpack out.zip -d DIR [-k KEY] [--force] [--no-verify]
 ```
 
 `bundle` 只打包清单中列出的文件，并验证签名；`unpack` 拒绝 `..`、绝对路径和符号链接条目，解包后自动 `verify`。
@@ -640,7 +644,7 @@ hashseal attest-verify FILE [-p 公钥] [--json]
 
 ```bash
 hashseal attest dist -o attestation.json
-hashseal attest-verify attestation.json -p hashseal_public.pem
+hashseal attest-verify attestation.json -k hashseal_public.pem
 ```
 
 ### `config` — 配置
@@ -653,13 +657,12 @@ hashseal config [--json]
 
 ```toml
 [hashseal]
-tsa = "https://timestamp.digicert.com"
+tsa = "http://timestamp.digicert.com"
 tsa_ca = "/path/to/ca.pem"
 key = "~/.config/hashseal/private.pem"
 pubkey = "~/.config/hashseal/public.pem"
 exclude = ["*.log"]
 follow_symlinks = false
-audit = true
 audit_sink = "both"        # file | syslog | both
 audit_max_bytes = 10485760
 audit_backups = 5
@@ -675,7 +678,7 @@ hashseal audit [-n 20]
 
 日志默认写入 `~/.local/state/hashseal/audit.jsonl`（JSON Lines），按大小轮转。
 `audit_sink` 可选 `file` / `syslog` / `both`；syslog 仅 Unix，失败不影响主流程。
-可用 `HASHSEAL_AUDIT_LOG` 改路径、`HASHSEAL_NO_AUDIT=1` 或 `--no-audit` 关闭。
+审计日志始终开启，不可关闭；可用 `HASHSEAL_AUDIT_LOG` 修改路径。
 
 文档站：<https://renengade.github.io/hashseal/>
 
@@ -691,7 +694,7 @@ hashseal audit [-n 20]
 | `manifest` | ✅ | 生成覆盖整个目录的清单 |
 | `sign` | ✅ | 生成清单并签名，可选时间戳 |
 | `verify` | ✅ | 验清单签名/时间戳，再逐文件比对 |
-| `timestamp` | ✅ | 对 `MANIFEST.sha256.sig` 盖章 |
+| `timestamp` | ✅ | 对 `.hashseal/MANIFEST.sha256.sig` 盖章 |
 | `ots` | 透传 | 由 `ots` 客户端决定 |
 | `diff` | — | 直接对比两份清单 |
 | `inspect` | — | 查看 `.sig` / `.tsr` 元数据 |
@@ -707,7 +710,8 @@ hashseal audit [-n 20]
 
 ### 默认 TSA 与信任根
 
-- 默认 TSA：`https://timestamp.digicert.com`（可用 `--tsa` 或 `HASHSEAL_TSA` 覆盖）；
+- 默认 TSA：`http://timestamp.digicert.com`，失败时自动切换 Sectigo、freetsa；
+  显式 `--tsa` 可指定一个或多个（逗号分隔）；
 - 默认信任根 = **系统 CA 库 + 内置 freetsa 根**：
   - DigiCert / Sectigo 等公共 TSA 通过系统 CA 库验证；
   - freetsa 通过内置根验证，无需下载。
@@ -768,7 +772,7 @@ export HASHSEAL_TSA=http://timestamp.sectigo.com
 CI 示例：
 
 ```bash
-hashseal verify dist/ --tsr dist/MANIFEST.sha256.sig.tsr \
+hashseal verify dist/ --tsr dist/.hashseal/MANIFEST.sha256.sig.tsr \
   || { echo "校验失败，拒绝部署"; exit 1; }
 ```
 
@@ -797,7 +801,7 @@ A：那是 UTC。现在输出会同时显示本地时间和 UTC，例如
 A：不加 `--force` 会拒绝，并且在改动任何文件之前退出；加 `--force` 才重新生成清单、重签、重盖时间戳。
 
 **Q：目录里为什么没有每个文件的 `.sig`？**
-A：目录采用清单打包，只签 `MANIFEST.sha256`。这样能防"删除文件连同签名"，也避免 N 次时间戳请求。
+A：目录采用清单打包，只签 `.hashseal/MANIFEST.sha256`。这样能防“删除文件连同签名”，也避免 N 次时间戳请求。
 
 **Q：`fingerprint` 能验证目录吗？**
 A：不能。它只计算公钥指纹；验证目录用 `verify DIR`。
@@ -839,7 +843,7 @@ CI 在 Linux/macOS × Python 3.10–3.13 上运行测试与静态检查；打 `v
 
 ```bash
 docker build -t hashseal .
-docker run --rm -v "$PWD:/work" hashseal verify /work/app.py -p /work/public.pem
+docker run --rm -v "$PWD:/work" hashseal verify /work/app.py -k /work/public.pem
 ```
 
 ### GitHub Action

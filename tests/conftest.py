@@ -1,4 +1,8 @@
 import os
+import tempfile
 
-# 测试不写用户真实审计日志；需要测试审计的用例会临时清除该变量
-os.environ.setdefault("HASHSEAL_NO_AUDIT", "1")
+# 测试把审计日志写到临时目录，避免污染用户状态；日志本身始终开启
+os.environ.setdefault(
+    "HASHSEAL_AUDIT_LOG",
+    os.path.join(tempfile.mkdtemp(prefix="hashseal-test-audit-"), "audit.jsonl"),
+)

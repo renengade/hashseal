@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from .core import (
-    MANIFEST_NAME,
     load_public,
     parse_record,
     public_fingerprint,
@@ -18,6 +17,7 @@ from .core import (
 )
 from .manifest import (
     ManifestError,
+    find_manifest,
     find_unlisted,
     parse_manifest,
     verify_entries,
@@ -48,9 +48,12 @@ def create_bundle(
 ) -> dict:
     if not root.is_dir():
         raise BundleError(f"不是目录: {root}")
-    manifest = root / MANIFEST_NAME
+    found = find_manifest(root)
+    if found is None:
+        raise BundleError(f"{root} 还没有签名（先执行 hashseal sign {root}）")
+    manifest, _meta_dir = found
     sig = Path(str(manifest) + ".sig")
-    if not manifest.is_file() or not sig.is_file():
+    if not sig.is_file():
         raise BundleError(f"{root} 还没有签名（先执行 hashseal sign {root}）")
 
     try:
@@ -74,10 +77,14 @@ def create_bundle(
         raise BundleError("清单签名无效，拒绝打包")
 
     tsr = Path(str(sig) + ".tsr")
+    manifest_rel = manifest.relative_to(root).as_posix()
+    sig_rel = sig.relative_to(root).as_posix()
+    tsr_rel = tsr.relative_to(root).as_posix()
     meta = {
         "format": BUNDLE_FORMAT,
         "created": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "root": root.name,
+        "manifest": manifest_rel,
         "files": len(entries),
         "fingerprint": public_fingerprint(public_key),
         "signer": record.get("signer", ""),
@@ -88,10 +95,10 @@ def create_bundle(
     try:
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             zf.writestr(BUNDLE_META, json.dumps(meta, ensure_ascii=False, indent=2))
-            zf.write(manifest, MANIFEST_NAME)
-            zf.write(sig, sig.name)
+            zf.write(manifest, manifest_rel)
+            zf.write(sig, sig_rel)
             if tsr.is_file():
-                zf.write(tsr, tsr.name)
+                zf.write(tsr, tsr_rel)
             if include_pubkey:
                 zf.write(public_key_path, "public.pem")
             for _digest, rel in entries:

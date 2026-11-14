@@ -7,6 +7,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .core import warn
+
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 DEFAULT_BACKUPS = 5
 SINKS = {"file", "syslog", "both"}
@@ -73,14 +75,12 @@ def _write_syslog(line: str, facility_name: str) -> None:
     try:
         syslog.openlog("hashseal", syslog.LOG_PID, facility)
         syslog.syslog(syslog.LOG_INFO, line.rstrip("\n"))
-    except OSError:
-        pass
+    except OSError as exc:
+        warn(f"审计日志写入失败: {exc}")
 
 
 def write_event(event: str, config: dict | None = None, **fields: object) -> None:
     """追加审计事件；任何失败都不能影响主流程。"""
-    if os.environ.get("HASHSEAL_NO_AUDIT"):
-        return
     record = {
         "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "event": event,
@@ -92,6 +92,10 @@ def write_event(event: str, config: dict | None = None, **fields: object) -> Non
         if sink in ("file", "both"):
             _write_file(path, line, max_bytes, backups)
         if sink in ("syslog", "both"):
-            _write_syslog(line, facility)
-    except OSError:
-        pass
+            ok = _write_syslog(line, facility)
+            if not ok:
+                warn("syslog 不可用，回退写入本地审计文件")
+                if sink == "syslog":
+                    _write_file(path, line, max_bytes, backups)
+    except OSError as exc:
+        warn(f"审计日志写入失败: {exc}")

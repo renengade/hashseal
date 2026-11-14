@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0
+
+### Changed
+
+- 目录签名默认把元数据放进 `.hashseal/`（清单、签名、时间戳），源文件保持干净；
+  `verify DIR` 自动查找 `.hashseal/`，并兼容旧版根目录布局。
+- 默认 TSA 改回 `http://timestamp.digicert.com`，失败自动回退
+  `http://timestamp.sectigo.com`、`https://freetsa.org/tsr`；
+  `--tsa` / `HASHSEAL_TSA` 支持逗号分隔多个地址。
+
+### Security
+
+- 审计日志强制开启：移除 `--no-audit`、`HASHSEAL_NO_AUDIT` 和配置开关；
+  syslog 不可用时回退本地文件，写入失败会告警。
+- 空口令文件被拒绝，避免静默生成未加密私钥。
+
 ## 0.7.0
 
 ### Added

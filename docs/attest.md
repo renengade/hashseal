@@ -7,7 +7,7 @@
 ```bash
 hashseal sign dist/
 hashseal attest dist -o attestation.json
-hashseal attest-verify attestation.json -p hashseal_public.pem
+hashseal attest-verify attestation.json -k hashseal_public.pem
 ```
 
 Statement 包含：

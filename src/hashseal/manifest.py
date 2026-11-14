@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 from .core import (
     DEFAULT_EXCLUDES,
     MANIFEST_NAME,
+    META_DIR,
     SKIP_DIRS,
     SKIP_SUFFIXES,
     atomic_write_text,
@@ -21,6 +22,17 @@ _LINE_RE = re.compile(r"^([0-9a-fA-F]{64}) [ *](.+)$")
 
 class ManifestError(Exception):
     """清单内容非法（路径逃逸、格式错误等）。"""
+
+
+def find_manifest(root: Path) -> tuple[Path, Path] | None:
+    """优先 .hashseal/，兼容旧版根目录布局；返回 (清单路径, 元数据目录)。"""
+    preferred = root / META_DIR / MANIFEST_NAME
+    if preferred.is_file():
+        return preferred, preferred.parent
+    legacy = root / MANIFEST_NAME
+    if legacy.is_file():
+        return legacy, root
+    return None
 
 
 def _excluded(rel: PurePosixPath, patterns: tuple[str, ...]) -> bool:

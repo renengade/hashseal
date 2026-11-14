@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 import hashseal
-from hashseal import audit, cli
+from hashseal import audit, cli, tsa
 
 
 class FeatureTest(unittest.TestCase):
@@ -68,6 +68,42 @@ class FeatureTest(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("未列入清单", out)
 
+    def test_tsa_fallback(self) -> None:
+        out = self.tmp / "fallback.tsr"
+        info = {"nonce": None, "tsa": "Fake TSA", "chain": "ok"}
+        with (
+            mock.patch.object(tsa, "_post", side_effect=[tsa.TimestampError("boom"), b"token"]) as post,
+            mock.patch.object(tsa, "check_token", return_value=info),
+            mock.patch.object(tsa, "resolve_ca", return_value=(None, "", False)),
+        ):
+            path, result, _ = tsa._stamp_file(
+                self.target,
+                tsa=["http://a.invalid", "http://b.invalid"],
+                tsa_ca=None,
+                timeout=1,
+                out_path=out,
+                force=True,
+            )
+        self.assertEqual(path, out)
+        self.assertEqual(result["tsa_url"], "http://b.invalid")
+        self.assertEqual(post.call_count, 2)
+        self.assertTrue(out.is_file())
+
+    def test_tsa_all_fail(self) -> None:
+        with (
+            mock.patch.object(tsa, "_post", side_effect=tsa.TimestampError("down")),
+            mock.patch.object(tsa, "resolve_ca", return_value=(None, "", False)),
+            self.assertRaises(tsa.TimestampError),
+        ):
+            tsa._stamp_file(
+                self.target,
+                tsa=["http://a.invalid", "http://b.invalid"],
+                tsa_ca=None,
+                timeout=1,
+                out_path=self.tmp / "x.tsr",
+                force=True,
+            )
+
     # ---------------------------------------------------------------- config
     def test_config_pubkey_and_command(self) -> None:
         cfg = self.tmp / "config.toml"
@@ -84,10 +120,7 @@ class FeatureTest(unittest.TestCase):
     # ----------------------------------------------------------------- audit
     def test_audit_log_written(self) -> None:
         log = self.tmp / "audit.jsonl"
-        with mock.patch.dict(
-            os.environ,
-            {"HASHSEAL_AUDIT_LOG": str(log), "HASHSEAL_NO_AUDIT": ""},
-        ):
+        with mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}):
             self._sign()
         line = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(line["event"], "sign")
@@ -96,7 +129,7 @@ class FeatureTest(unittest.TestCase):
     def test_audit_rotation(self) -> None:
         log = self.tmp / "rot.jsonl"
         cfg = {"audit_sink": "file", "audit_file": str(log), "audit_max_bytes": 200, "audit_backups": 2}
-        with mock.patch.dict(os.environ, {"HASHSEAL_NO_AUDIT": ""}):
+        with mock.patch.dict(os.environ, {"HASHSEAL_AUDIT_LOG": str(log)}):
             for i in range(6):
                 audit.write_event("test", config=cfg, n=i)
         self.assertTrue(log.is_file())
@@ -106,7 +139,6 @@ class FeatureTest(unittest.TestCase):
         log = self.tmp / "syslog.jsonl"
         cfg = {"audit_sink": "syslog", "audit_file": str(log)}
         with (
-            mock.patch.dict(os.environ, {"HASHSEAL_NO_AUDIT": ""}),
             mock.patch("syslog.syslog") as syslog_write,
             mock.patch("syslog.openlog"),
         ):

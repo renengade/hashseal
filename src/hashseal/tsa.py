@@ -26,6 +26,7 @@ from .core import (
     sha256_file,
     warn,
 )
+from .manifest import find_manifest
 
 # asn1crypto 懒加载，核心签名/校验不强依赖它
 cms = tsp = asn1x509 = None  # type: ignore[assignment]
@@ -526,6 +527,8 @@ def _fmt_gen_time(iso_value: str) -> str:
 def _print_token_info(info: dict) -> None:
     print(f"时间          : {_fmt_gen_time(info['gen_time'])}")
     print(f"TSA           : {info['tsa']}")
+    if info.get("tsa_url"):
+        print(f"TSA 地址      : {info['tsa_url']}")
     print(f"序列号        : {info['serial']}")
     print(f"策略          : {info['policy']}")
     print(f"令牌签名      : {info['digest_alg']} / {info['sig_alg']}")
@@ -538,7 +541,7 @@ def _print_token_info(info: dict) -> None:
 def _stamp_file(
     data_path: Path,
     *,
-    tsa: str,
+    tsa: str | list[str],
     tsa_ca: str | None,
     timeout: float,
     out_path: Path | None = None,
@@ -553,16 +556,32 @@ def _stamp_file(
     nonce = int.from_bytes(os.urandom(8), "big")
 
     ca_pem, ca_label, strict = resolve_ca(tsa_ca)
+    endpoints = [tsa] if isinstance(tsa, str) else list(tsa)
+    if not endpoints:
+        raise TimestampError("没有可用的 TSA 地址")
+    body = _build_request(digest, nonce)
 
-    raw = _post(tsa, _build_request(digest, nonce), timeout, retries=retries)
-    info = check_token(
-        raw,
-        digest,
-        data_path=data_path,
-        ca_pem=ca_pem,
-        ca_label=ca_label,
-        chain_required=strict,
-    )
+    errors: list[str] = []
+    info: dict | None = None
+    for index, endpoint in enumerate(endpoints):
+        try:
+            raw = _post(endpoint, body, timeout, retries=retries)
+            info = check_token(
+                raw,
+                digest,
+                data_path=data_path,
+                ca_pem=ca_pem,
+                ca_label=ca_label,
+                chain_required=strict,
+            )
+            info["tsa_url"] = endpoint
+            break
+        except TimestampError as exc:
+            errors.append(f"{endpoint}: {exc}")
+            if index < len(endpoints) - 1:
+                warn(f"TSA {endpoint} 失败，切换到 {endpoints[index + 1]}")
+    if info is None:
+        raise TimestampError("所有 TSA 均失败：" + "；".join(errors))
 
     if info["nonce"] is not None and info["nonce"] != nonce:
         warn(f"TSA 回显 nonce={info['nonce']} 与请求 nonce={nonce} 不一致")
@@ -581,14 +600,15 @@ def _stamp_file(
 
 def _dir_timestamp_target(root: Path) -> tuple[Path, str]:
     """目录的时间戳对象：优先清单签名，其次清单本身。"""
-    sig = Path(str(root / MANIFEST_NAME) + ".sig")
+    found = find_manifest(root)
+    if found is None:
+        die(f"{root} 里没有 {MANIFEST_NAME}，请先执行: hashseal sign {root}")
+    manifest, _meta_dir = found
+    sig = Path(str(manifest) + ".sig")
     if sig.is_file():
         return sig, "清单签名"
-    manifest = root / MANIFEST_NAME
-    if manifest.is_file():
-        warn("目录清单尚未签名；本次只证明清单在该时刻已存在，建议先 hashseal sign")
-        return manifest, "清单"
-    die(f"{root} 里没有 {MANIFEST_NAME}，请先执行: hashseal sign {root}")
+    warn("目录清单尚未签名；本次只证明清单在该时刻已存在，建议先 hashseal sign")
+    return manifest, "清单"
 
 def token_metadata(raw: bytes) -> dict:
     """只解析令牌元数据，不做密码学验证（用于 inspect）。"""

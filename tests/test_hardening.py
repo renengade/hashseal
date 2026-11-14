@@ -79,6 +79,14 @@ class HardeningTest(unittest.TestCase):
         self.assertEqual(rc, 1, out)
 
     # ------------------------------------------------------------------ P1
+    def test_key_alias_for_verify(self) -> None:
+        self._sign()
+        for flag in ("-k", "--key"):
+            rc, out = self._run("verify", str(self.target), flag, str(self.pub))
+            self.assertEqual(rc, 0, out)
+        rc, out = self._run("verify", str(self.target), "-p", str(self.pub))
+        self.assertEqual(rc, 0, out)
+
     def test_encrypted_private_key(self) -> None:
         pw_file = self.tmp / "pw.txt"
         pw_file.write_text("correct horse battery staple\n", encoding="utf-8")
@@ -106,6 +114,18 @@ class HardeningTest(unittest.TestCase):
         self.assertEqual(rc, 2, out)
         self.assertIn("口令", out)
 
+    def test_empty_password_file_rejected(self) -> None:
+        pw = self.tmp / "empty.pass"
+        pw.write_text("", encoding="utf-8")
+        rc, out = self._run(
+            "keygen",
+            "--private", str(self.tmp / "empty_priv.pem"),
+            "--public", str(self.tmp / "empty_pub.pem"),
+            "--password-file", str(pw),
+        )
+        self.assertEqual(rc, 2, out)
+        self.assertIn("为空", out)
+
     def test_expect_fingerprint(self) -> None:
         self._sign()
         rc, out = self._run("fingerprint", str(self.pub))
@@ -128,14 +148,23 @@ class HardeningTest(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("不一致", out)
 
+    def test_legacy_root_manifest_still_verifies(self) -> None:
+        d = self._make_dir()
+        manifest = d / "MANIFEST.sha256"
+        self._run("manifest", str(d), "-o", str(manifest), "--base", str(d))
+        self._run("sign", str(manifest), "-k", str(self.priv), "--force")
+        rc, out = self._run("verify", str(d), "-p", str(self.pub))
+        self.assertEqual(rc, 0, out)
+
     def test_sensitive_files_are_excluded(self) -> None:
         d = self._make_dir()
         (d / "hashseal_private.pem").write_text("SECRET", encoding="utf-8")
         (d / ".env").write_text("TOKEN=1", encoding="utf-8")
         self._run("sign", str(d), "-k", str(self.priv), "--force")
-        manifest = (d / "MANIFEST.sha256").read_text(encoding="utf-8")
+        manifest = (d / ".hashseal" / "MANIFEST.sha256").read_text(encoding="utf-8")
         self.assertNotIn("private", manifest)
         self.assertNotIn(".env", manifest)
+        self.assertNotIn(".hashseal", manifest)
 
         rc, out = self._run("verify", str(d), "-p", str(self.pub))
         self.assertEqual(rc, 0, out)
@@ -144,7 +173,7 @@ class HardeningTest(unittest.TestCase):
         d = self._make_dir()
         self._run("sign", str(d), "-k", str(self.priv), "--force")
         before = self.tmp / "before.sha256"
-        shutil.copy2(d / "MANIFEST.sha256", before)
+        shutil.copy2(d / ".hashseal" / "MANIFEST.sha256", before)
 
         (d / "a.txt").write_text("changed\n", encoding="utf-8")
         (d / "b.txt").write_text("new\n", encoding="utf-8")
@@ -155,7 +184,7 @@ class HardeningTest(unittest.TestCase):
         self.assertIn("a.txt", payload["changed"])
         self.assertIn("b.txt", payload["added"])
 
-        rc, out = self._run("inspect", str(d / "MANIFEST.sha256.sig"))
+        rc, out = self._run("inspect", str(d / ".hashseal" / "MANIFEST.sha256.sig"))
         self.assertEqual(rc, 0, out)
         self.assertIn("hashseal/2", out)
 

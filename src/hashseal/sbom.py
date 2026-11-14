@@ -11,8 +11,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
 from . import __version__
-from .core import MANIFEST_NAME, now_iso, warn
-from .manifest import parse_manifest
+from .core import now_iso, warn
+from .manifest import ManifestError, find_manifest, parse_manifest
 
 _REQ_RE = re.compile(r"^([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?\s*==\s*([^\s;#]+)")
 
@@ -98,7 +98,10 @@ def build_sbom(
     include_deps: bool = False,
     lock_path: Path | None = None,
 ) -> dict:
-    manifest = root / MANIFEST_NAME
+    found = find_manifest(root)
+    if found is None:
+        raise ManifestError(f"{root} 下没有 MANIFEST.sha256，请先执行 hashseal sign")
+    manifest, _meta_dir = found
     entries = parse_manifest(manifest)
     file_components = [
         {
