@@ -29,6 +29,7 @@
 ### Added
 
 - `bundle --compress stored|deflate`：默认 `stored`（不压缩），256MB 数据 6.6s → 1.9s；
+- `bundle` 默认内置公钥（`hashseal-public.pem`），接收方无需单独获取；
 - `-j/--jobs` 并行哈希：`sign` / `manifest` / `verify` / `status` / `bundle`；
 - `unpack` 使用 1 MiB 缓冲流式复制。
 

@@ -931,7 +931,7 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             root,
             out,
             public_key_path=_pub_path(args),
-            include_pubkey=args.include_pubkey,
+            include_pubkey=True,
             allow_unlisted=args.allow_unlisted,
             compress=args.compress,
             jobs=_jobs(args),
@@ -1273,7 +1273,6 @@ def build_parser() -> argparse.ArgumentParser:
     bd.add_argument("-o", "--output", required=True)
     bd.add_argument("-k", "--key", "-p", "--pubkey", dest="pubkey", metavar="KEY", default=None,
                     help="公钥 PEM（-p/--pubkey 为兼容别名）")
-    bd.add_argument("--include-pubkey", action="store_true")
     bd.add_argument("--allow-unlisted", action="store_true")
     bd.add_argument("--compress", choices=["stored", "deflate"], default="stored",
                     help="stored=最快（不压缩）；deflate=减小体积")

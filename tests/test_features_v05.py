@@ -240,7 +240,7 @@ class FeatureTest(unittest.TestCase):
         self._run("sign", str(d), "-k", str(self.priv), "--force")
         bundle = self.tmp / "pkg.zip"
         rc, out = self._run(
-            "bundle", str(d), "-o", str(bundle), "-p", str(self.pub), "--include-pubkey"
+            "bundle", str(d), "-o", str(bundle), "-p", str(self.pub)
         )
         self.assertEqual(rc, 0, out)
         self.assertTrue(bundle.is_file())

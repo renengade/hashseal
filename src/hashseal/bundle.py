@@ -45,7 +45,7 @@ def create_bundle(
     out_path: Path,
     *,
     public_key_path: Path,
-    include_pubkey: bool = False,
+    include_pubkey: bool = True,
     allow_unlisted: bool = False,
     compress: str = "stored",
     jobs: int = 1,

@@ -196,7 +196,7 @@ class HardeningTest(unittest.TestCase):
         self._run("sign", str(d), "-k", str(self.priv), "--force")
         bundle = self.tmp / "b.zip"
         rc, out = self._run(
-            "bundle", str(d), "-o", str(bundle), "-k", str(self.pub), "--include-pubkey"
+            "bundle", str(d), "-o", str(bundle), "-k", str(self.pub)
         )
         self.assertEqual(rc, 0, out)
         names = zipfile.ZipFile(bundle).namelist()

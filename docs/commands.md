@@ -128,7 +128,7 @@ hashseal verify FILE|DIR [--sig PATH] [-k KEY] [--name NAME] [--tsr TOKEN]
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `--sig` | `<文件>.sig` | 签名文件路径 |
-| `-k, --key` | `hashseal_public.pem` | 公钥 PEM |
+| `-k, --key` | `hashseal_public.pem` | 公钥 PEM（始终内置到 zip） |
 | `--name` | 实际文件名 | 改名时指定签名中记录的原名 |
 | `--tsr` | 目录自动探测 | 时间戳令牌 |
 | `--ts-only` | 关 | 只验时间戳，不要求 `.sig` |
@@ -229,8 +229,7 @@ hashseal bundle DIR -o ZIP [-k KEY] [--include-pubkey] [--compress MODE] [-j N] 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `-o, --output` | 必填 | 输出 zip 路径 |
-| `-k, --key` | `hashseal_public.pem` | 公钥 PEM |
-| `--include-pubkey` | 关 | 内置 `hashseal-public.pem` 到 zip |
+| `-k, --key` | `hashseal_public.pem` | 公钥 PEM（始终内置到 zip） |
 | `--compress` | `stored` | `stored`=不压缩（最快）；`deflate`=减小体积 |
 | `-j, --jobs` | `min(4, CPU)` | 并行校验线程数 |
 | `--allow-unlisted` | 关 | 允许未列入清单的文件 |
