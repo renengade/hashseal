@@ -12,11 +12,15 @@ import tempfile
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NoReturn
+from typing import ClassVar, NoReturn
 
+from asn1crypto import algos as asn1_algos
+from asn1crypto import core as asn1_core
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.padding import PKCS7
 
 FORMAT = "hashseal/2"
 LEGACY_FORMATS = {"hashseal/1", "fileproof/1"}
@@ -24,6 +28,7 @@ ALLOWED_FORMATS = {FORMAT} | LEGACY_FORMATS
 ALG = "ed25519"
 HASH = "sha256"
 CHUNK = 8 << 20  # 8 MiB
+KDF_ITERATIONS = 600_000  # PBKDF2-HMAC-SHA256 迭代次数（OpenSSL 默认 2048 太低）
 
 MANIFEST_NAME = "MANIFEST.sha256"
 META_DIR = ".hashseal"
@@ -180,20 +185,74 @@ def _password_bytes(password: str | None) -> bytes | None:
     return password.encode("utf-8") if password else None
 
 
+class _EncryptedPrivateKeyInfo(asn1_core.Sequence):
+    _fields: ClassVar = [
+        ("encryptionAlgorithm", asn1_algos.EncryptionAlgorithm),
+        ("encryptedData", asn1_core.OctetString),
+    ]
+
+
+def _encrypt_pkcs8(key_der: bytes, password: bytes) -> bytes:
+    """手工构建 PKCS#8 PBES2（PBKDF2-HMAC-SHA256 + AES-256-CBC），迭代次数可控。"""
+    salt = os.urandom(16)
+    iv = os.urandom(16)
+    derived = hashlib.pbkdf2_hmac("sha256", password, salt, KDF_ITERATIONS, dklen=32)
+    padder = PKCS7(128).padder()
+    padded = padder.update(key_der) + padder.finalize()
+    encryptor = Cipher(algorithms.AES(derived), modes.CBC(iv)).encryptor()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+
+    kdf_params = asn1_algos.Pbkdf2Params({
+        "salt": asn1_core.OctetString(salt),
+        "iteration_count": KDF_ITERATIONS,
+        "key_length": 32,
+        "prf": asn1_algos.HmacAlgorithm({"algorithm": "1.2.840.113549.2.9"}),  # hmacWithSHA256
+    })
+    pbes2 = asn1_algos.Pbes2Params({
+        "key_derivation_func": asn1_algos.KdfAlgorithm({
+            "algorithm": "pbkdf2",
+            "parameters": kdf_params,
+        }),
+        "encryption_scheme": asn1_algos.EncryptionAlgorithm({
+            "algorithm": "aes256_cbc",
+            "parameters": asn1_core.OctetString(iv),
+        }),
+    })
+
+    der = _EncryptedPrivateKeyInfo({
+        "encryptionAlgorithm": asn1_algos.EncryptionAlgorithm({
+            "algorithm": "pbes2",
+            "parameters": pbes2,
+        }),
+        "encryptedData": asn1_core.OctetString(ciphertext),
+    }).dump()
+
+    lines = base64.encodebytes(der).decode("ascii").rstrip("\n")
+    body = "\n".join(lines.split("\n"))
+    return (
+        "-----BEGIN ENCRYPTED PRIVATE KEY-----\n"
+        + body + "\n"
+        + "-----END ENCRYPTED PRIVATE KEY-----\n"
+    ).encode("ascii")
+
+
 def generate_keypair(
     private_path: Path, public_path: Path, password: str | None = None
 ) -> ed25519.Ed25519PrivateKey:
     key = ed25519.Ed25519PrivateKey.generate()
-    encryption = (
-        serialization.BestAvailableEncryption(_password_bytes(password))
-        if password
-        else serialization.NoEncryption()
-    )
-    priv_pem = key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        encryption,
-    )
+    if password:
+        key_der = key.private_bytes(
+            serialization.Encoding.DER,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        priv_pem = _encrypt_pkcs8(key_der, password.encode("utf-8"))
+    else:
+        priv_pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
     pub_pem = key.public_key().public_bytes(
         serialization.Encoding.PEM,
         serialization.PublicFormat.SubjectPublicKeyInfo,

@@ -21,4 +21,5 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --group dev
       - run: uv run ruff check .
+      - run: uv run mypy src/hashseal --ignore-missing-imports --exclude ".*tsa\.py.*|.*sbom\.py.*"
       - run: uv run pytest -q

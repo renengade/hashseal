@@ -5,11 +5,13 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 import hashseal
 
@@ -168,6 +170,66 @@ class HardeningTest(unittest.TestCase):
 
         rc, out = self._run("verify", str(d), "-p", str(self.pub))
         self.assertEqual(rc, 0, out)
+
+    def test_expanduser_paths(self) -> None:
+        import argparse
+        import os
+
+        from hashseal.cli import _pub_path
+
+        with mock.patch.dict(os.environ, {"HOME": str(self.tmp)}):
+            pub = self.tmp / "pub.pem"
+            pub.write_bytes(self.pub.read_bytes())
+            args = argparse.Namespace(pubkey="~/pub.pem")
+            self.assertEqual(_pub_path(args), pub)
+
+        self._sign()
+        with mock.patch.dict(os.environ, {"HOME": str(self.tmp)}):
+            rc, out = self._run("verify", str(self.target), "-k", "~/pub.pem")
+        self.assertEqual(rc, 0, out)
+
+    def test_bundle_pubkey_no_collision(self) -> None:
+        import zipfile
+
+        d = self._make_dir()
+        (d / "public.pem").write_text("payload public.pem", encoding="utf-8")
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        bundle = self.tmp / "b.zip"
+        rc, out = self._run(
+            "bundle", str(d), "-o", str(bundle), "-k", str(self.pub), "--include-pubkey"
+        )
+        self.assertEqual(rc, 0, out)
+        names = zipfile.ZipFile(bundle).namelist()
+        self.assertEqual(names.count("public.pem"), 1)
+        self.assertIn("hashseal-public.pem", names)
+
+        rc, out = self._run("unpack", str(bundle), "-d", str(self.tmp / "out"), "-k", str(self.pub))
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(
+            (self.tmp / "out" / "public.pem").read_text(encoding="utf-8"),
+            "payload public.pem",
+        )
+
+    def test_unpack_streams_large_file(self) -> None:
+        import hashlib
+
+        d = self.tmp / "bigdir"
+        d.mkdir()
+        big = d / "big.bin"
+        big.write_bytes(os.urandom(3 * 1024 * 1024))
+        digest = hashlib.sha256(big.read_bytes()).hexdigest()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        bundle = self.tmp / "big.zip"
+        self._run("bundle", str(d), "-o", str(bundle), "-k", str(self.pub))
+        rc, out = self._run("unpack", str(bundle), "-d", str(self.tmp / "out"), "-k", str(self.pub))
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(hashlib.sha256((self.tmp / "out" / "big.bin").read_bytes()).hexdigest(), digest)
+
+    def test_inspect_tsr_no_chain_field(self) -> None:
+        token = Path(__file__).parent / "fixtures" / "app.py.sig.tsr"
+        rc, out = self._run("inspect", str(token))
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("chain", out)
 
     def test_diff_and_inspect(self) -> None:
         d = self._make_dir()

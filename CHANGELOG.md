@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.9.0
+
+### Added
+
+- mypy 类型检查进 CI（`ruff` + `mypy` + `pytest` 三阶段）。
+- Release workflow 加入 `actions/attest-build-provenance`（keyless SLSA 证明）。
+- 私钥 KDF 迭代从 2048 提升到 600,000（PBKDF2-HMAC-SHA256 + AES-256-CBC）。
+- 审计日志覆盖所有命令（keygen/fingerprint/hash/manifest/diff/inspect/ots）。
+- `config` 命令显示完整配置键。
+- 文档：符号链接逃逸拒绝、显式排除文件不受 exclude 影响、TSA 回退语义。
+
+### Fixed
+
+- `_pub_path` / `_key_path` / `_tsa_ca` / `_audit` 类型签名。
+- `_verify_file` 消除 `args` 传递歧义。
+
+## 0.8.2
+
+### Fixed
+
+- 所有路径参数支持 `~` 展开（`-k`、`--sig`、`--tsr`、`-o`、`--tsa-ca`、`--password-file` 等）。
+- `bundle --include-pubkey` 内置公钥改名为 `hashseal-public.pem`，
+  避免与载荷中同名 `public.pem` 冲突（此前 zip 内会出现重复条目）。
+- `unpack` 改为流式复制，修复大文件解包内存占用问题。
+- `inspect .tsr` 移除从不出现的 `chain` 字段。
+
+### Added
+
+- `bundle --compress stored|deflate`：默认 `stored`（不压缩），256MB 数据 6.6s → 1.9s；
+- `-j/--jobs` 并行哈希：`sign` / `manifest` / `verify` / `status` / `bundle`；
+- `unpack` 使用 1 MiB 缓冲流式复制。
+
 ## 0.8.1
 
 ### Changed

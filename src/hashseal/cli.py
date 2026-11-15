@@ -62,9 +62,14 @@ from .tsa import (
 )
 
 
+def _exp(value: str | None) -> str:
+    """展开 ~ 与 ~user；空值返回空字符串。"""
+    return os.path.expanduser(value) if value else ""
+
+
 def _password(args: argparse.Namespace, *, required: bool = False) -> str | None:
     if getattr(args, "password_file", None):
-        path = Path(args.password_file)
+        path = Path(_exp(args.password_file))
         if not path.is_file():
             die(f"找不到口令文件: {path}")
         value = path.read_text(encoding="utf-8").rstrip("\n")
@@ -88,22 +93,48 @@ def _cfg(args: argparse.Namespace, key: str, default=None):
 
 def _tsa_list(args: argparse.Namespace) -> list[str]:
     explicit = getattr(args, "tsa", None) or os.environ.get("HASHSEAL_TSA") or _cfg(args, "tsa")
+    tsa_ca = getattr(args, "tsa_ca", None) or os.environ.get("HASHSEAL_TSA_CA") or _cfg(args, "tsa_ca")
+
     if explicit:
         values = explicit if isinstance(explicit, (list, tuple)) else str(explicit).split(",")
-        return [str(value).strip() for value in values if str(value).strip()]
-    return [DEFAULT_TSA, *DEFAULT_TSA_FALLBACKS]
+        endpoints = [value.strip() for value in values if value.strip()]
+    else:
+        endpoints = [DEFAULT_TSA, *DEFAULT_TSA_FALLBACKS]
+
+    # 逗号分隔多个地址 = 用户精确指定的列表，不追加
+    precise = isinstance(explicit, (list, tuple)) or (
+        isinstance(explicit, str) and "," in explicit
+    )
+    if precise:
+        return endpoints
+
+    # 显式 tsa_ca 时只用主端点：严格证书链校验只对与其匹配的 TSA 有意义
+    if tsa_ca:
+        return endpoints
+
+    # 显式单个地址 = 主端点，仍追加默认回退（去重保序）
+    if explicit:
+        result: list[str] = []
+        for endpoint in [endpoints[0], DEFAULT_TSA, *DEFAULT_TSA_FALLBACKS]:
+            if endpoint not in result:
+                result.append(endpoint)
+        return result
+    return endpoints
 
 
 def _tsa_ca(args: argparse.Namespace) -> str | None:
-    return getattr(args, "tsa_ca", None) or _cfg(args, "tsa_ca")
+    value = getattr(args, "tsa_ca", None) or _cfg(args, "tsa_ca")
+    return _exp(value)
 
 
 def _key_path(args: argparse.Namespace) -> Path:
-    return Path(getattr(args, "key", None) or _cfg(args, "key") or DEFAULT_PRIVATE)
+    raw = _exp(getattr(args, "key", None)) or _exp(_cfg(args, "key"))
+    return Path(raw or DEFAULT_PRIVATE)
 
 
 def _pub_path(args: argparse.Namespace) -> Path:
-    return Path(getattr(args, "pubkey", None) or _cfg(args, "pubkey") or DEFAULT_PUBLIC)
+    raw = _exp(getattr(args, "pubkey", None)) or _exp(_cfg(args, "pubkey"))
+    return Path(raw or DEFAULT_PUBLIC)
 
 
 def _follow(args: argparse.Namespace) -> bool:
@@ -113,6 +144,14 @@ def _follow(args: argparse.Namespace) -> bool:
     return bool(_cfg(args, "follow_symlinks", False))
 
 
+def _jobs(args: argparse.Namespace) -> int:
+    value = getattr(args, "jobs", None)
+    if value:
+        return max(1, int(value))
+    cpus = os.cpu_count() or 1
+    return min(4, cpus)
+
+
 def _excludes(args: argparse.Namespace) -> tuple[str, ...]:
     configured = tuple(_cfg(args, "exclude", []) or ())
     return tuple(getattr(args, "exclude", None) or ()) + configured
@@ -120,7 +159,7 @@ def _excludes(args: argparse.Namespace) -> tuple[str, ...]:
 
 def _audit(args: argparse.Namespace, event: str, **fields: object) -> None:
     # 审计日志是强制项：不再提供关闭开关
-    write_event(event, config=getattr(args, "_config", None) or {}, **fields)
+    write_event(event, config=dict(getattr(args, "_config", None) or {}), **fields)
 
 
 def _signing_key(args: argparse.Namespace):
@@ -138,7 +177,7 @@ def _collect_targets(args: argparse.Namespace) -> tuple[list[Path], dict[Path, P
     targets: list[Path] = []
     dir_roots: dict[Path, Path] = {}
     for name in args.files:
-        src = Path(name)
+        src = Path(_exp(name))
         if src.is_dir():
             manifest = src / META_DIR / MANIFEST_NAME
             targets.append(manifest)
@@ -170,8 +209,8 @@ def _materialize_manifests(args: argparse.Namespace, dir_roots: dict[Path, Path]
 
 
 def cmd_keygen(args: argparse.Namespace) -> int:
-    priv_path = Path(args.private)
-    pub_path = Path(args.public)
+    priv_path = Path(_exp(args.private))
+    pub_path = Path(_exp(args.public))
     for label, target in (("私钥", priv_path), ("公钥", pub_path)):
         if target.is_dir():
             die(f"{label}输出路径是目录，需要文件路径: {target}")
@@ -215,7 +254,7 @@ def cmd_hash(args: argparse.Namespace) -> int:
     rc = 0
     total = 0
     for name in args.files:
-        p = Path(name)
+        p = Path(_exp(name))
         if p.is_dir():
             targets = iter_files(
                 [name], excludes=_excludes(args), follow_symlinks=_follow(args)
@@ -241,10 +280,10 @@ def cmd_hash(args: argparse.Namespace) -> int:
 
 
 def cmd_manifest(args: argparse.Namespace) -> int:
-    out_path = Path(args.output)
+    out_path = Path(_exp(args.output))
     if out_path.is_dir():
         die(f"清单输出路径是目录，请给文件路径: {out_path}")
-    base = Path(args.base) if args.base else None
+    base = Path(_exp(args.base)) if args.base else None
     try:
         count = build_manifest(
             args.paths,
@@ -252,6 +291,7 @@ def cmd_manifest(args: argparse.Namespace) -> int:
             base,
             excludes=_excludes(args),
             follow_symlinks=_follow(args),
+            jobs=_jobs(args),
         )
     except ManifestError as exc:
         _audit(args, "manifest", path=str(out_path), ok=False, error=str(exc))
@@ -278,16 +318,16 @@ def cmd_sign(args: argparse.Namespace) -> int:
         die("--tsr 需要配合 --timestamp 使用")
     if _tsa_ca(args) and not args.timestamp:
         warn("--tsa-ca 只有配合 --timestamp 才有意义，已忽略")
-    if args.sig and Path(args.sig).is_dir():
+    if args.sig and Path(_exp(args.sig)).is_dir():
         die(f"--sig 指向的是目录，需要文件路径: {args.sig}")
 
     if not args.force:
         for target in targets:
-            sig_path = Path(args.sig) if args.sig else sig_path_for(target)
+            sig_path = Path(_exp(args.sig)) if args.sig else sig_path_for(target)
             if sig_path.exists():
                 die(f"{sig_path} 已存在（覆盖加 --force）")
             if args.timestamp:
-                tsr_path = Path(args.tsr) if args.tsr else Path(str(sig_path) + ".tsr")
+                tsr_path = Path(_exp(args.tsr)) if args.tsr else Path(str(sig_path) + ".tsr")
                 if tsr_path.exists():
                     die(f"{tsr_path} 已存在（覆盖加 --force）")
 
@@ -296,7 +336,7 @@ def cmd_sign(args: argparse.Namespace) -> int:
     rc = 0
     for p in targets:
         record = build_record(key, p, signer=args.signer, signed_name=args.name)
-        sig_path = Path(args.sig) if args.sig else sig_path_for(p)
+        sig_path = Path(_exp(args.sig)) if args.sig else sig_path_for(p)
         atomic_write_text(
             sig_path,
             json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -323,7 +363,7 @@ def cmd_sign(args: argparse.Namespace) -> int:
                     tsa=_tsa_list(args),
                     tsa_ca=_tsa_ca(args),
                     timeout=args.timeout,
-                    out_path=Path(args.tsr) if args.tsr else None,
+                    out_path=Path(_exp(args.tsr)) if args.tsr else None,
                     force=args.force,
                     retries=args.retry,
                 )
@@ -368,7 +408,7 @@ def _verify_file(
     ts_error = None
     if result["ok"] and args.tsr:
         try:
-            tsr_path = Path(args.tsr)
+            tsr_path = Path(_exp(args.tsr))
             if not tsr_path.is_file():
                 raise TimestampError(f"找不到时间戳令牌: {tsr_path}")
             ca_pem, ca_label, strict = resolve_ca(_tsa_ca(args))
@@ -432,7 +472,7 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
     result = info["result"]
     try:
         entries = parse_manifest(manifest)
-        good, bad = verify_entries(root, entries)
+        good, bad = verify_entries(root, entries, jobs=_jobs(args))
     except ManifestError as exc:
         die(str(exc))
     extras: list[str] = []
@@ -564,7 +604,7 @@ def _check_timestamp_only(
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    p = Path(args.file)
+    p = Path(_exp(args.file))
     if p.is_dir():
         return _verify_dir(args, p)
 
@@ -575,7 +615,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if not p.is_file():
         die(f"文件不存在或不是普通文件: {p}")
 
-    sig_path = Path(args.sig) if args.sig else sig_path_for(p)
+    sig_path = Path(_exp(args.sig)) if args.sig else sig_path_for(p)
     if not sig_path.is_file():
         die(f"找不到签名文件 {sig_path}")
     pub = load_public(_pub_path(args))
@@ -671,7 +711,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def cmd_timestamp(args: argparse.Namespace) -> int:
-    p = Path(args.file)
+    p = Path(_exp(args.file))
     if p.is_dir():
         p, kind = _dir_timestamp_target(p)
         print(f"目录模式：对{kind} {p} 申请时间戳")
@@ -684,7 +724,7 @@ def cmd_timestamp(args: argparse.Namespace) -> int:
             tsa=_tsa_list(args),
             tsa_ca=_tsa_ca(args),
             timeout=args.timeout,
-            out_path=Path(args.out) if args.out else None,
+            out_path=Path(_exp(args.out)) if args.out else None,
             force=args.force,
             digest_hex=digest_hex,
             retries=args.retry,
@@ -719,14 +759,14 @@ def cmd_ots(args: argparse.Namespace) -> int:
     if not args.ots_args:
         die("用法：hashseal ots stamp|verify|upgrade FILE ...")
     rc = subprocess.run([exe, *args.ots_args], check=False).returncode
-    _audit(args, "ots", args=list(args.ots_args), ok=(rc == 0))
+    _audit(args, "ots", ots_args=list(args.ots_args), ok=(rc == 0))
     return rc
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
     try:
-        left = parse_manifest(Path(args.left))
-        right = parse_manifest(Path(args.right))
+        left = parse_manifest(Path(_exp(args.left)))
+        right = parse_manifest(Path(_exp(args.right)))
     except ManifestError as exc:
         die(str(exc))
     result = diff_manifests(left, right)
@@ -757,7 +797,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
-    p = Path(args.file)
+    p = Path(_exp(args.file))
     if not p.is_file():
         die(f"文件不存在: {p}")
     if p.suffix == ".tsr":
@@ -777,7 +817,6 @@ def cmd_inspect(args: argparse.Namespace) -> int:
                 "policy",
                 "digest_alg",
                 "sig_alg",
-                "chain",
             ):
                 if key in meta:
                     value = fmt_time(meta[key]) if key == "gen_time" else meta[key]
@@ -802,7 +841,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    p = Path(args.file)
+    p = Path(_exp(args.file))
     if p.is_dir():
         found = find_manifest(p)
         if found is None:
@@ -816,7 +855,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         result = verify_record(record, manifest, pub)
         try:
             entries = parse_manifest(manifest)
-            good, bad = verify_entries(p, entries)
+            good, bad = verify_entries(p, entries, jobs=_jobs(args))
         except ManifestError as exc:
             die(str(exc))
         extras = [] if args.allow_unlisted else find_unlisted(
@@ -838,7 +877,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     if not p.is_file():
         die(f"文件不存在: {p}")
-    sig = Path(args.sig) if args.sig else sig_path_for(p)
+    sig = Path(_exp(args.sig)) if args.sig else sig_path_for(p)
     if not sig.is_file():
         die(f"找不到签名文件 {sig}")
     pub = load_public(_pub_path(args))
@@ -852,7 +891,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_renew(args: argparse.Namespace) -> int:
-    p = Path(args.file)
+    p = Path(_exp(args.file))
     if p.is_dir():
         target, _kind = _dir_timestamp_target(p)
     elif p.suffix == ".sig":
@@ -883,8 +922,8 @@ def cmd_renew(args: argparse.Namespace) -> int:
 
 
 def cmd_bundle(args: argparse.Namespace) -> int:
-    root = Path(args.dir)
-    out = Path(args.output)
+    root = Path(_exp(args.dir))
+    out = Path(_exp(args.output))
     try:
         meta = create_bundle(
             root,
@@ -892,6 +931,8 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             public_key_path=_pub_path(args),
             include_pubkey=args.include_pubkey,
             allow_unlisted=args.allow_unlisted,
+            compress=args.compress,
+            jobs=_jobs(args),
         )
     except BundleError as exc:
         die(str(exc))
@@ -905,8 +946,8 @@ def cmd_bundle(args: argparse.Namespace) -> int:
 
 
 def cmd_unpack(args: argparse.Namespace) -> int:
-    bundle = Path(args.bundle)
-    dest = Path(args.dest)
+    bundle = Path(_exp(args.bundle))
+    dest = Path(_exp(args.dest))
     try:
         meta = unpack_bundle(bundle, dest, force=args.force)
     except BundleError as exc:
@@ -918,8 +959,8 @@ def cmd_unpack(args: argparse.Namespace) -> int:
     if args.no_verify:
         _audit(args, "unpack", path=str(dest), ok=True, verified=False)
         return 0
-    included_pub = dest / "public.pem"
-    pub = Path(args.pubkey) if args.pubkey else (
+    included_pub = dest / "hashseal-public.pem"
+    pub = Path(_exp(args.pubkey)) if args.pubkey else (
         included_pub if included_pub.is_file() else _pub_path(args)
     )
     if included_pub.is_file() and not args.pubkey:
@@ -927,7 +968,7 @@ def cmd_unpack(args: argparse.Namespace) -> int:
     verify_args = build_parser().parse_args([
         "verify", str(dest), "-p", str(pub),
         "--exclude", "hashseal-bundle.json",
-        "--exclude", "public.pem",
+        "--exclude", "hashseal-public.pem",
     ])
     verify_args._config = getattr(args, "_config", {})
     rc = cmd_verify(verify_args)
@@ -945,7 +986,19 @@ def cmd_config(args: argparse.Namespace) -> int:
         ))
     else:
         print(f"配置路径: {path}" + ("" if path.is_file() else "（不存在，使用默认值）"))
-        for key in ("tsa", "tsa_ca", "key", "pubkey", "exclude", "follow_symlinks", "audit"):
+        for key in (
+            "tsa",
+            "tsa_ca",
+            "key",
+            "pubkey",
+            "exclude",
+            "follow_symlinks",
+            "audit_sink",
+            "audit_file",
+            "audit_max_bytes",
+            "audit_retention_days",
+            "audit_facility",
+        ):
             if key in cfg:
                 print(f"  {key} = {cfg[key]}")
     return 0
@@ -975,16 +1028,16 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
 
 def cmd_sbom(args: argparse.Namespace) -> int:
-    root = Path(args.dir)
+    root = Path(_exp(args.dir))
     try:
         data = build_sbom(
             root,
             include_deps=args.deps,
-            lock_path=Path(args.lock) if args.lock else None,
+            lock_path=Path(_exp(args.lock)) if args.lock else None,
         )
     except (ManifestError, FileNotFoundError) as exc:
         die(str(exc))
-    out = Path(args.output)
+    out = Path(_exp(args.output))
     atomic_write_text(out, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
     print(f"已生成 SBOM {out}（{len(data['components'])} 个组件）")
     print(f"生成时间  : {fmt_time(data['metadata']['timestamp'])}")
@@ -994,14 +1047,14 @@ def cmd_sbom(args: argparse.Namespace) -> int:
 
 
 def cmd_attest(args: argparse.Namespace) -> int:
-    root = Path(args.dir)
+    root = Path(_exp(args.dir))
     key = _signing_key(args)
     try:
         statement = build_statement(root, predicate_type=args.predicate_type)
     except (AttestError, ManifestError) as exc:
         die(str(exc))
     envelope = sign_statement(statement, key)
-    out = Path(args.output)
+    out = Path(_exp(args.output))
     atomic_write_text(out, json.dumps(envelope, ensure_ascii=False, indent=2) + "\n")
     print(f"已生成证明 {out}")
     print(f"  subjects: {len(statement['subject'])}")
@@ -1011,7 +1064,7 @@ def cmd_attest(args: argparse.Namespace) -> int:
 
 
 def cmd_attest_verify(args: argparse.Namespace) -> int:
-    path = Path(args.file)
+    path = Path(_exp(args.file))
     if not path.is_file():
         die(f"找不到证明文件: {path}")
     try:
@@ -1084,6 +1137,7 @@ def build_parser() -> argparse.ArgumentParser:
     mf.add_argument("--base", help="记录相对路径的基准目录")
     mf.add_argument("--exclude", action="append", metavar="GLOB")
     mf.add_argument("--follow-symlinks", action="store_true", default=None)
+    mf.add_argument("-j", "--jobs", type=int, default=None, help="并行哈希线程数")
     mf.set_defaults(func=cmd_manifest)
 
     sg = sub.add_parser("sign", help="为文件/目录生成 .sig 分离签名")
@@ -1100,6 +1154,7 @@ def build_parser() -> argparse.ArgumentParser:
     sg.add_argument("--retry", type=int, default=2, help="TSA 失败重试次数")
     sg.add_argument("--tsr")
     sg.add_argument("--exclude", action="append", metavar="GLOB")
+    sg.add_argument("-j", "--jobs", type=int, default=None, help="并行哈希线程数")
     sg.add_argument("--follow-symlinks", action="store_true", default=None)
     sg.add_argument("--force", action="store_true")
     sg.set_defaults(func=cmd_sign)
@@ -1122,6 +1177,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vf.add_argument("--exclude", action="append", metavar="GLOB")
     vf.add_argument("--follow-symlinks", action="store_true", default=None)
+    vf.add_argument("-j", "--jobs", type=int, default=None, help="并行校验线程数")
     vf.add_argument("--json", action="store_true")
     vf.set_defaults(func=cmd_verify)
 
@@ -1155,6 +1211,7 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("--allow-unlisted", action="store_true")
     st.add_argument("--exclude", action="append", metavar="GLOB")
     st.add_argument("--follow-symlinks", action="store_true", default=None)
+    st.add_argument("-j", "--jobs", type=int, default=None, help="并行校验线程数")
     st.add_argument("--json", action="store_true")
     st.set_defaults(func=cmd_status)
 
@@ -1174,6 +1231,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="公钥 PEM（-p/--pubkey 为兼容别名）")
     bd.add_argument("--include-pubkey", action="store_true")
     bd.add_argument("--allow-unlisted", action="store_true")
+    bd.add_argument("--compress", choices=["stored", "deflate"], default="stored",
+                    help="stored=最快（不压缩）；deflate=减小体积")
+    bd.add_argument("-j", "--jobs", type=int, default=None, help="并行校验线程数")
     bd.set_defaults(func=cmd_bundle)
 
     up = sub.add_parser("unpack", help="解包 bundle 并校验")

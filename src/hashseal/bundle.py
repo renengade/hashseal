@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -46,6 +47,8 @@ def create_bundle(
     public_key_path: Path,
     include_pubkey: bool = False,
     allow_unlisted: bool = False,
+    compress: str = "stored",
+    jobs: int = 1,
 ) -> dict:
     if not root.is_dir():
         raise BundleError(f"不是目录: {root}")
@@ -59,7 +62,7 @@ def create_bundle(
 
     try:
         entries = parse_manifest(manifest)
-        _good, bad = verify_entries(root, entries)
+        _good, bad = verify_entries(root, entries, jobs=jobs)
     except ManifestError as exc:
         raise BundleError(str(exc)) from exc
     if bad:
@@ -96,14 +99,18 @@ def create_bundle(
 
     tmp_path = out_path.with_name(out_path.name + ".tmp")
     try:
-        with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        compression = (
+            zipfile.ZIP_DEFLATED if compress == "deflate" else zipfile.ZIP_STORED
+        )
+        with zipfile.ZipFile(tmp_path, "w", compression=compression) as zf:
             zf.writestr(BUNDLE_META, json.dumps(meta, ensure_ascii=False, indent=2))
             zf.write(manifest, manifest_rel)
             zf.write(sig, sig_rel)
             if tsr.is_file():
                 zf.write(tsr, tsr_rel)
             if include_pubkey:
-                zf.write(public_key_path, "public.pem")
+                # 避免与载荷中同名 public.pem 冲突
+                zf.write(public_key_path, "hashseal-public.pem")
             for _digest, rel in entries:
                 zf.write(root / rel, rel)
         os.replace(tmp_path, out_path)
@@ -140,7 +147,7 @@ def unpack_bundle(bundle_path: Path, dest: Path, *, force: bool = False) -> dict
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, target.open("wb") as dst:
-                    dst.write(src.read())
+                    shutil.copyfileobj(src, dst, length=1024 * 1024)
     except (zipfile.BadZipFile, OSError, json.JSONDecodeError) as exc:
         raise BundleError(f"解包失败: {exc}") from exc
     return meta

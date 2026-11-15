@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 
 from .core import (
@@ -93,6 +94,7 @@ def build_manifest(
     *,
     excludes: tuple[str, ...] = (),
     follow_symlinks: bool = False,
+    jobs: int = 1,
 ) -> int:
     """生成 sha256sum 兼容清单，返回条目数。"""
     files = iter_files(paths, excludes=excludes, follow_symlinks=follow_symlinks)
@@ -102,7 +104,7 @@ def build_manifest(
     if base is None:
         base = _default_base(paths)
     base_resolved = base.resolve()
-    lines: list[str] = []
+    entries: list[tuple[Path, PurePosixPath]] = []
     seen: set[str] = set()
     for p in files:
         if p.resolve() == out_path.resolve():
@@ -115,8 +117,19 @@ def build_manifest(
         if rel.as_posix() in seen:
             continue
         seen.add(rel.as_posix())
-        digest, _ = sha256_file(p)
-        lines.append(f"{digest}  {rel.as_posix()}")
+        entries.append((p, rel))
+
+    def _hash(path: Path) -> str:
+        return sha256_file(path)[0]
+
+    targets = [path for path, _rel in entries]
+    if jobs > 1 and len(targets) > 1:
+        with ThreadPoolExecutor(max_workers=min(jobs, len(targets))) as ex:
+            digests = list(ex.map(_hash, targets))
+    else:
+        digests = [_hash(path) for path in targets]
+
+    lines = [f"{digest}  {rel.as_posix()}" for (_path, rel), digest in zip(entries, digests)]
 
     if not lines:
         raise ManifestError("没有找到任何文件")
@@ -170,26 +183,33 @@ def resolve_member(root: Path, rel: str) -> Path:
     return candidate
 
 
+def _verify_one(root: Path, digest: str, rel: str) -> dict:
+    try:
+        target = resolve_member(root, rel)
+    except ManifestError as exc:
+        return {"path": rel, "reason": str(exc)}
+    if not target.is_file():
+        return {"path": rel, "reason": "文件缺失"}
+    actual, _ = sha256_file(target)
+    if actual != digest:
+        return {"path": rel, "reason": "内容不一致"}
+    return {"path": rel, "digest": actual, "ok": True}
+
+
 def verify_entries(
-    root: Path, entries: list[tuple[str, str]]
+    root: Path, entries: list[tuple[str, str]], *, jobs: int = 1
 ) -> tuple[list[dict], list[dict]]:
-    """校验清单条目，返回 (通过项, 失败项)。"""
-    good: list[dict] = []
-    bad: list[dict] = []
-    for digest, rel in entries:
-        try:
-            target = resolve_member(root, rel)
-        except ManifestError as exc:
-            bad.append({"path": rel, "reason": str(exc)})
-            continue
-        if not target.is_file():
-            bad.append({"path": rel, "reason": "文件缺失"})
-            continue
-        actual, _ = sha256_file(target)
-        if actual != digest:
-            bad.append({"path": rel, "reason": "内容不一致"})
-        else:
-            good.append({"path": rel, "digest": actual})
+    """校验清单条目，返回 (通过项, 失败项)。结果保持输入顺序。"""
+    def run(item: tuple[str, str]) -> dict:
+        return _verify_one(root, item[0], item[1])
+
+    if jobs > 1 and len(entries) > 1:
+        with ThreadPoolExecutor(max_workers=min(jobs, len(entries))) as ex:
+            results = list(ex.map(run, entries))
+    else:
+        results = [run(item) for item in entries]
+    good = [r for r in results if r.get("ok")]
+    bad = [r for r in results if not r.get("ok")]
     return good, bad
 
 

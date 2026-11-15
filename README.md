@@ -95,12 +95,12 @@ hashseal --help
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh \
-  | HASHSEAL_REF=v0.8.1 sh
+  | HASHSEAL_REF=v0.9.0 sh
 ```
 
 `HASHSEAL_REF` 支持 tag、分支或 commit SHA：
 
-- 锁定发布：`HASHSEAL_REF=v0.8.1`
+- 锁定发布：`HASHSEAL_REF=v0.9.0`
 - 跟随开发分支：`HASHSEAL_REF=main`
 - 最新 release 是移动目标；生产环境建议锁定 tag 并校验 `HASHSEAL_SHA256`
 - API 限流时可设置 `GITHUB_TOKEN` 提高额度
@@ -108,7 +108,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 下载包可校验 SHA-256（Release 页面附 `SHA256SUMS`）：
 
 ```bash
-curl -fsSL .../install.sh | HASHSEAL_REF=v0.8.1 HASHSEAL_SHA256=<sha256> sh
+curl -fsSL .../install.sh | HASHSEAL_REF=v0.9.0 HASHSEAL_SHA256=<sha256> sh
 ```
 
 ### 其他安装方式
@@ -130,7 +130,7 @@ export HASHSEAL_URL=https://gh-proxy.com/https://github.com/renengade/hashseal/a
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
 ```
 
-锁定版本时把 `main` 换成 tag，例如 `v0.8.1`。
+锁定版本时把 `main` 换成 tag，例如 `v0.9.0`。
 
 - freetsa 根证书已内置，**不需要**访问 freetsa；
 - 第三方 GitHub 代理会看到下载内容，属供应链信任边界，敏感环境请自建镜像并校验 SHA-256；
@@ -278,6 +278,8 @@ openssl pkey -pubin -in public.pem -outform DER | openssl dgst -sha256 -binary |
 
 - 新增、删除、修改任意文件都会导致校验失败（新增文件会报告“未列入清单”）；
 - 清单中若出现 `..`、绝对路径或重复条目，校验直接拒绝；
+- 指向目录外的符号链接会被视为“内容不一致”拒绝；`--follow-symlinks` 仅影响目录遍历；
+- 显式传入的文件不受排除规则影响（显式 = 用户明确要求）；
 - 一次签名、一次时间戳覆盖整批；
 - 清单是标准 `sha256sum` 格式，可互操作：
 
@@ -296,7 +298,7 @@ cd dist && sha256sum -c .hashseal/MANIFEST.sha256
 全局选项：
 
 ```bash
-hashseal --version        # 0.8.1
+hashseal --version        # 0.9.0
 hashseal --help
 ```
 
@@ -610,9 +612,14 @@ hashseal renew FILE|DIR [--tsa URL] [--force]
 ### `bundle` / `unpack` — 打包与解包
 
 ```
-hashseal bundle DIR -o out.zip [-k KEY] [--include-pubkey] [--allow-unlisted]
+hashseal bundle DIR -o out.zip [-k KEY] [--compress stored|deflate] [-j N] [--allow-unlisted]
 hashseal unpack out.zip -d DIR [-k KEY] [--force] [--no-verify]
 ```
+
+- `--include-pubkey` 内置公钥命名为 `hashseal-public.pem`，不会与载荷同名文件冲突；
+- `--compress` 默认 `stored`（不压缩，最快）；`deflate` 减小体积但明显变慢；
+- `unpack` 以 1 MiB 缓冲流式解包，大文件不占内存；
+- 所有路径参数支持 `~` 展开。
 
 `bundle` 只打包清单中列出的文件，并验证签名；`unpack` 拒绝 `..`、绝对路径和符号链接条目，解包后自动 `verify`。
 
@@ -761,6 +768,22 @@ export HASHSEAL_TSA=http://timestamp.sectigo.com
 1. 在旧令牌失效前，对新令牌再做一次时间戳（令牌续期）；
 2. 或采用 Evidence Record（RFC 4998）/ 归档时间戳（RFC 5544）；
 3. 一并保存：文件、`.sig`、`.tsr`、TSA 根证书、验证命令与版本。
+
+---
+
+## 性能
+
+实测 256 MB 随机数据（单文件）：
+
+| 操作 | 优化前 | 优化后 | 说明 |
+| --- | --- | --- | --- |
+| sign / verify 哈希 | ~0.3 s | ~0.3–0.5 s | `-j` 并行对多文件目录有效 |
+| bundle | **6.6 s**（deflate） | **1.9 s**（stored） | 不压缩是主要提速点 |
+| unpack | 2.6 s | **1.0 s** | 1 MiB 缓冲流式复制 |
+
+- bundle 默认**不压缩**：zip 仅作容器，GB 级交付物通常已是二进制/已压缩，deflate 收益低但 CPU 成本高；
+- 需要减小体积时用 `--compress deflate`；
+- 多文件目录可用 `-j N` 并行计算哈希（CPU 核数越多越快）。
 
 ---
 

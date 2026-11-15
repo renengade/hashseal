@@ -315,6 +315,39 @@ class FeatureTest(unittest.TestCase):
             rc, out = self._run("sign", str(self.target), "-k", str(priv))
         self.assertEqual(rc, 0, out)
 
+    def test_bundle_compress_modes(self) -> None:
+        import zipfile
+
+        d = self._dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        for mode, expected in (
+            ("stored", zipfile.ZIP_STORED),
+            ("deflate", zipfile.ZIP_DEFLATED),
+        ):
+            bundle = self.tmp / f"b-{mode}.zip"
+            rc, out = self._run(
+                "bundle", str(d), "-o", str(bundle), "-k", str(self.pub),
+                "--compress", mode,
+            )
+            self.assertEqual(rc, 0, out)
+            zf = zipfile.ZipFile(bundle)
+            for info in zf.infolist():
+                self.assertEqual(info.compress_type, expected)
+
+    def test_parallel_manifest_matches_serial(self) -> None:
+        d = self.tmp / "par"
+        d.mkdir()
+        for name in ("a.txt", "b.txt", "c.txt", "d.txt"):
+            (d / name).write_text(f"content {name}\n", encoding="utf-8")
+        serial = self.tmp / "serial.sha256"
+        parallel = self.tmp / "parallel.sha256"
+        self._run("manifest", str(d), "-o", str(serial), "--base", str(d))
+        rc, out = self._run(
+            "manifest", str(d), "-o", str(parallel), "--base", str(d), "-j", "4"
+        )
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(serial.read_bytes(), parallel.read_bytes())
+
     def test_unpack_rejects_zip_slip(self) -> None:
         bad = self.tmp / "bad.zip"
         with zipfile.ZipFile(bad, "w") as zf:
