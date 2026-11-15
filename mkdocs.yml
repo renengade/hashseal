@@ -9,13 +9,21 @@ theme:
   features:
     - navigation.sections
     - navigation.top
+    - navigation.indexes
     - content.code.copy
 
 nav:
   - 首页: index.md
-  - 威胁模型: threat-model.md
-  - 审计与配置: audit.md
+  - 安装: install.md
+  - 快速上手: index.md
+  - 核心概念: concepts.md
+  - 命令详解: commands.md
+  - 时间戳: timestamps.md
   - 证明与 SBOM: attest.md
+  - 审计与配置: audit.md
+  - 性能: performance.md
+  - 威胁模型: threat-model.md
+  - 常见问题: faq.md
 
 markdown_extensions:
   - admonition
