@@ -976,76 +976,6 @@ def cmd_unpack(args: argparse.Namespace) -> int:
     return rc
 
 
-def cmd_config(args: argparse.Namespace) -> int:
-    path = config_path()
-    cfg = load_config()
-    if args.json:
-        print(json.dumps(
-            {"path": str(path), "exists": path.is_file(), "config": cfg},
-            ensure_ascii=False, indent=2,
-        ))
-    else:
-        print(f"配置路径: {path}" + ("" if path.is_file() else "（不存在，使用默认值）"))
-        for key in (
-            "tsa",
-            "tsa_ca",
-            "key",
-            "pubkey",
-            "exclude",
-            "follow_symlinks",
-            "audit_sink",
-            "audit_file",
-            "audit_max_bytes",
-            "audit_retention_days",
-            "audit_facility",
-        ):
-            if key in cfg:
-                print(f"  {key} = {cfg[key]}")
-    return 0
-
-
-def cmd_audit(args: argparse.Namespace) -> int:
-    path = audit_path()
-    lines = read_events(path, args.lines)
-    if not lines:
-        print("(暂无审计日志)")
-        return 0
-    if args.json:
-        print("\n".join(lines))
-        return 0
-    for line in lines:
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            print(line)
-            continue
-        ts = record.pop("ts_local", fmt_time(record.get("ts")))
-        event = record.pop("event", "?")
-        record.pop("ts", None)
-        rest = " ".join(f"{key}={value}" for key, value in record.items())
-        print(f"{ts}  {event}  {rest}".rstrip())
-    return 0
-
-
-def cmd_sbom(args: argparse.Namespace) -> int:
-    root = Path(_exp(args.dir))
-    try:
-        data = build_sbom(
-            root,
-            include_deps=args.deps,
-            lock_path=Path(_exp(args.lock)) if args.lock else None,
-        )
-    except (ManifestError, FileNotFoundError) as exc:
-        die(str(exc))
-    out = Path(_exp(args.output))
-    atomic_write_text(out, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
-    print(f"已生成 SBOM {out}（{len(data['components'])} 个组件）")
-    print(f"生成时间  : {fmt_time(data['metadata']['timestamp'])}")
-    print(f"下一步：hashseal sign {out}")
-    _audit(args, "sbom", path=str(out), ok=True, components=len(data["components"]))
-    return 0
-
-
 def cmd_attest(args: argparse.Namespace) -> int:
     root = Path(_exp(args.dir))
     key = _signing_key(args)
@@ -1094,6 +1024,118 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         print(f"subjects  : {summary['subjects']}")
         print(f"类型      : {summary['predicateType']}")
     _audit(args, "attest-verify", path=str(path), ok=True)
+    return 0
+
+
+TOML_TEMPLATE = """\
+[hashseal]
+# TSA 地址（可逗号分隔多个，失败自动切换）
+tsa = "http://timestamp.digicert.com"
+
+# 时间戳信任根（可选，覆盖内置 + 系统 CA）
+# tsa_ca = "/path/to/ca.pem"
+
+# 私钥路径
+key = "~/.config/hashseal/private.pem"
+
+# 公钥路径
+pubkey = "~/.config/hashseal/public.pem"
+
+# 目录遍历时排除的文件（glob，可多个）
+# exclude = ["*.log", "temp/"]
+
+# 跟随符号链接
+follow_symlinks = false
+
+# 审计 sink: file | syslog | both
+audit_sink = "both"
+
+# 审计文件路径
+audit_file = "~/.local/state/hashseal/audit.jsonl"
+
+# 审计文件轮转阈值（字节）
+audit_max_bytes = 10485760
+
+# 审计日志保留天数
+audit_retention_days = 90
+
+# syslog facility
+audit_facility = "user"
+"""
+
+
+def cmd_config_init(args: argparse.Namespace) -> int:
+    path = Path(_exp(args.path)) if args.path else config_path()
+    if not path.suffix:
+        path = path.with_suffix(".toml")
+    if path.exists() and not args.force:
+        die(f"{path} 已存在（覆盖加 --force）")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, TOML_TEMPLATE)
+    print(f"已生成配置文件 {path}")
+    print("编辑后运行 hashseal config 查看生效配置。")
+    return 0
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    path = config_path()
+    cfg = load_config()
+    if args.json:
+        print(json.dumps(
+            {"path": str(path), "exists": path.is_file(), "config": cfg},
+            ensure_ascii=False, indent=2,
+        ))
+    else:
+        print(f"配置路径: {path}" + ("" if path.is_file() else "（不存在，使用默认值）"))
+        for key in (
+            "tsa", "tsa_ca", "key", "pubkey", "exclude", "follow_symlinks",
+            "audit_sink", "audit_file", "audit_max_bytes",
+            "audit_retention_days", "audit_facility",
+        ):
+            if key in cfg:
+                print(f"  {key} = {cfg[key]}")
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    path = audit_path()
+    lines = read_events(path, args.lines)
+    if not lines:
+        print("(暂无审计日志)")
+        return 0
+    if args.json:
+        print("\n".join(lines))
+        return 0
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            print(line)
+            continue
+        ts = record.pop("ts_local", fmt_time(record.get("ts")))
+        event = record.pop("event", "?")
+        record.pop("ts", None)
+        rest = " ".join(f"{key}={value}" for key, value in record.items())
+        print(f"{ts}  {event}  {rest}".rstrip())
+    return 0
+
+
+def cmd_sbom(args: argparse.Namespace) -> int:
+    root = Path(_exp(args.dir))
+    try:
+        data = build_sbom(
+            root,
+            include_deps=args.deps,
+            lock_path=Path(_exp(args.lock)) if args.lock else None,
+        )
+    except (ManifestError, FileNotFoundError) as exc:
+        die(str(exc))
+    out = Path(_exp(args.output))
+    atomic_write_text(out, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    print(f"已生成 SBOM {out}（{len(data['components'])} 个组件）")
+    print(f"生成时间  : {fmt_time(data['metadata']['timestamp'])}")
+    print(f"下一步：hashseal sign {out}")
+    _audit(args, "sbom", path=str(out), ok=True, components=len(data["components"]))
     return 0
 
 
@@ -1248,6 +1290,12 @@ def build_parser() -> argparse.ArgumentParser:
     cf = sub.add_parser("config", help="显示配置路径与生效配置")
     cf.add_argument("--json", action="store_true")
     cf.set_defaults(func=cmd_config)
+
+    cinit = sub.add_parser("config-init", help="生成配置文件模板（TOML）")
+    cinit.add_argument("path", nargs="?", default=None,
+                       help="输出路径（默认 ~/.config/hashseal/config.toml）")
+    cinit.add_argument("--force", action="store_true")
+    cinit.set_defaults(func=cmd_config_init)
 
     at = sub.add_parser("attest", help="生成 in-toto DSSE 证明")
     at.add_argument("dir")

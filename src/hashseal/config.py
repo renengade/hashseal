@@ -29,7 +29,8 @@ def load_config() -> dict:
     if not path.is_file():
         return {}
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_text(encoding="utf-8")
+        data = tomllib.loads(raw)
     except (OSError, tomllib.TOMLDecodeError) as exc:
         warn(f"无法读取配置文件 {path}: {exc}")
         return {}
