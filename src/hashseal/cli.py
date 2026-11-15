@@ -209,8 +209,10 @@ def _materialize_manifests(args: argparse.Namespace, dir_roots: dict[Path, Path]
 
 
 def cmd_keygen(args: argparse.Namespace) -> int:
-    priv_path = Path(_exp(args.private))
-    pub_path = Path(_exp(args.public))
+    cfg_key = _exp(_cfg(args, "key"))
+    cfg_pub = _exp(_cfg(args, "pubkey"))
+    priv_path = Path(_exp(args.private) if args.private else cfg_key or DEFAULT_PRIVATE)
+    pub_path = Path(_exp(args.public) if args.public else cfg_pub or DEFAULT_PUBLIC)
     for label, target in (("私钥", priv_path), ("公钥", pub_path)):
         if target.is_dir():
             die(f"{label}输出路径是目录，需要文件路径: {target}")
@@ -1150,8 +1152,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     kg = sub.add_parser("keygen", help="生成密钥对（只做一次）")
-    kg.add_argument("--private", default=DEFAULT_PRIVATE, help="私钥输出路径")
-    kg.add_argument("--public", default=DEFAULT_PUBLIC, help="公钥输出路径")
+    kg.add_argument("--private", default=None, help="私钥输出路径（默认读配置或 hashseal_private.pem）")
+    kg.add_argument("--public", default=None, help="公钥输出路径（默认读配置或 hashseal_public.pem）")
     kg.add_argument("--password-file", help="私钥口令文件（写入后私钥加密）")
     kg.add_argument("--force", action="store_true")
     kg.set_defaults(func=cmd_keygen)
@@ -1184,7 +1186,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sg = sub.add_parser("sign", help="为文件/目录生成 .sig 分离签名")
     sg.add_argument("files", nargs="+", help="文件或目录")
-    sg.add_argument("-k", "--key", default=None)
+    sg.add_argument("-k", "--key", default=None, help="私钥路径（默认读配置或 hashseal_private.pem）")
     sg.add_argument("--password-file", help="私钥口令文件")
     sg.add_argument("--sig", help="签名输出路径（单文件或单个目录）")
     sg.add_argument("--signer", default="", help="署名信息（v2 起纳入签名）")
