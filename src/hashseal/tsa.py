@@ -350,7 +350,7 @@ def check_token(
     ca_path: Path | None = None,
     ca_pem: bytes | None = None,
     ca_label: str = "",
-    chain_required: bool = True,
+    chain_required: bool = False,
 ) -> dict:
     """校验时间戳令牌并返回可展示的信息；失败抛 TimestampError。"""
     token, info, tst_der, is_response = _extract_token(raw)
@@ -422,7 +422,13 @@ def check_token(
         if not ca_path.is_file():
             raise TimestampError(f"找不到 CA 文件: {ca_path}")
         ca_pem = ca_path.read_bytes()
-    chain = "skipped（未提供信任根，只做了令牌绑定与签名校验）"
+    if ca_pem is None and ca_path is not None:
+        raise TimestampError(f"找不到 CA 文件: {ca_path}")
+    chain = "ok"
+    if ca_pem is None:
+        chain = "skipped（未提供信任根）"
+        if chain_required:
+            raise TimestampError("无法校验 TSA 证书链：未提供信任根。请用 --tsa-ca 指定。")
     if ca_pem is not None:
         if data_path is None:
             raise TimestampError("校验证书链需要原始数据文件")
@@ -484,7 +490,7 @@ def _system_ca_pem() -> bytes:
     return b""
 
 
-def resolve_ca(explicit: str | None) -> tuple[bytes | None, str, bool]:
+def resolve_ca(explicit: str | None, *, allow_unverified: bool = False) -> tuple[bytes | None, str, bool]:
     """选择 TSA 信任根，返回 (PEM, 标签, 是否严格)。
 
     优先级：--tsa-ca > 环境变量 HASHSEAL_TSA_CA > 内置 freetsa 根 + 系统 CA 库。
@@ -504,8 +510,8 @@ def resolve_ca(explicit: str | None) -> tuple[bytes | None, str, bool]:
     system_pem = _system_ca_pem()
     pem = FREETSA_CA_PEM.encode("ascii")
     if system_pem:
-        return pem + b"\n" + system_pem, "内置 freetsa 根 + 系统 CA 库", False
-    return pem, "内置 freetsa 根证书", False
+        return pem + b"\n" + system_pem, "内置 freetsa 根 + 系统 CA 库", not allow_unverified
+    return pem, "内置 freetsa 根证书", not allow_unverified
 
 
 def _print_token_info(info: dict) -> None:
@@ -532,6 +538,7 @@ def _stamp_file(
     force: bool = False,
     digest_hex: str | None = None,
     retries: int = 2,
+    allow_unverified: bool = False,
 ) -> tuple[Path, dict, str]:
     """为文件申请 RFC 3161 时间戳并落盘；失败抛 TimestampError。"""
     if digest_hex is None:
@@ -539,7 +546,7 @@ def _stamp_file(
     digest = bytes.fromhex(digest_hex)
     nonce = int.from_bytes(os.urandom(8), "big")
 
-    ca_pem, ca_label, strict = resolve_ca(tsa_ca)
+    ca_pem, ca_label, strict = resolve_ca(tsa_ca, allow_unverified=allow_unverified)
     endpoints = [tsa] if isinstance(tsa, str) else list(tsa)
     if not endpoints:
         raise TimestampError("没有可用的 TSA 地址")
@@ -568,7 +575,9 @@ def _stamp_file(
         raise TimestampError("所有 TSA 均失败：" + "；".join(errors))
 
     if info["nonce"] is not None and info["nonce"] != nonce:
-        warn(f"TSA 回显 nonce={info['nonce']} 与请求 nonce={nonce} 不一致")
+        raise TimestampError(
+            f"TSA 回显 nonce={info['nonce']} 与请求 nonce={nonce} 不一致：可能是重放令牌"
+        )
 
     out = out_path if out_path else Path(str(data_path) + ".tsr")
     if out.is_dir():

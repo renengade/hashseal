@@ -129,6 +129,8 @@ def b64e(raw: bytes) -> str:
 
 
 def b64d(text: str) -> bytes:
+    if not isinstance(text, str):
+        raise TypeError(f"签名值必须是字符串，得到 {type(text).__name__}")
     return base64.b64decode(text, validate=True)
 
 
@@ -389,6 +391,9 @@ def verify_record(
     return {
         "ok": ok,
         "format": fmt,
+        "metadata_mismatch": (
+            record.get("digest") != digest or record.get("size") != size
+        ),
         "signer_signed": fmt == FORMAT,
         "digest": digest,
         "size": size,

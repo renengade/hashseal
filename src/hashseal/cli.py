@@ -153,7 +153,13 @@ def _jobs(args: argparse.Namespace) -> int:
 
 
 def _excludes(args: argparse.Namespace) -> tuple[str, ...]:
-    configured = tuple(_cfg(args, "exclude", []) or ())
+    raw_cfg = _cfg(args, "exclude", [])
+    if isinstance(raw_cfg, str):
+        configured: tuple[str, ...] = (raw_cfg,)
+    elif isinstance(raw_cfg, (list, tuple)):
+        configured = tuple(raw_cfg)
+    else:
+        configured = ()
     return tuple(getattr(args, "exclude", None) or ()) + configured
 
 
@@ -213,6 +219,8 @@ def cmd_keygen(args: argparse.Namespace) -> int:
     cfg_pub = _exp(_cfg(args, "pubkey"))
     priv_path = Path(_exp(args.private) if args.private else cfg_key or DEFAULT_PRIVATE)
     pub_path = Path(_exp(args.public) if args.public else cfg_pub or DEFAULT_PUBLIC)
+    if priv_path == pub_path:
+        die("私钥和公钥不能使用同一路径")
     for label, target in (("私钥", priv_path), ("公钥", pub_path)):
         if target.is_dir():
             die(f"{label}输出路径是目录，需要文件路径: {target}")
@@ -274,7 +282,8 @@ def cmd_hash(args: argparse.Namespace) -> int:
         for target in targets:
             digest, size = sha256_file(target)
             total += 1
-            print(f"{digest}  {target}")
+            display = str(target).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+            print(f"{digest}  {display}")
             if args.verbose:
                 warn(f"{target}: {size} 字节")
     _audit(args, "hash", paths=list(args.files), files=total, ok=(rc == 0))
@@ -368,6 +377,7 @@ def cmd_sign(args: argparse.Namespace) -> int:
                     out_path=Path(_exp(args.tsr)) if args.tsr else None,
                     force=args.force,
                     retries=args.retry,
+                    allow_unverified=args.allow_unverified_chain,
                 )
             except TimestampError as exc:
                 warn(f"{p}: 签名已生成，但时间戳失败: {exc}")
@@ -413,7 +423,7 @@ def _verify_file(
             tsr_path = Path(_exp(args.tsr))
             if not tsr_path.is_file():
                 raise TimestampError(f"找不到时间戳令牌: {tsr_path}")
-            ca_pem, ca_label, strict = resolve_ca(_tsa_ca(args))
+            ca_pem, ca_label, strict = resolve_ca(_tsa_ca(args), allow_unverified=args.allow_unverified_chain)
             ts_info = check_token(
                 tsr_path.read_bytes(),
                 hashlib.sha256(sig_path.read_bytes()).digest(),
@@ -478,8 +488,9 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
     except ManifestError as exc:
         die(str(exc))
     extras: list[str] = []
+    skipped: list[str] = []
     if not args.allow_unlisted:
-        extras = find_unlisted(
+        extras, skipped = find_unlisted(
             root,
             {rel for _, rel in entries},
             excludes=_excludes(args),
@@ -540,6 +551,10 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
         print(f"未列入清单  : ❌ {len(extras)} 个文件")
         for rel in extras:
             print(f"  - {rel}")
+    if skipped:
+        print(f"被跳过条目  : ℹ️  {len(skipped)} 个（.env/symlink 等不参与哈希校验）")
+        for item in skipped:
+            print(f"  - {item}")
     return 0 if ok else 1
 
 
@@ -648,6 +663,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
             "ok": ok,
             "signature_valid": result["ok"],
             "signer_signed": result["signer_signed"],
+            "metadata_valid": not result.get("metadata_mismatch", False),
             "digest": result["digest"],
             "size": result["size"],
             "name": result["name"],
@@ -663,10 +679,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     print(f"文件      : {p}")
     _print_file_result(result, fp)
     if result["ok"]:
-        if (
-            record.get("digest") != result["digest"]
-            or record.get("size") != result["size"]
-        ):
+        if result.get("metadata_mismatch"):
             warn("签名有效，但签名文件中的摘要/大小字段与实物不符（元数据被改过？）")
         print("结果      : ✅ 通过 —— 内容与签名完全一致，且签名来自该公钥对应的私钥")
         if args.tsr:
@@ -730,6 +743,7 @@ def cmd_timestamp(args: argparse.Namespace) -> int:
             force=args.force,
             digest_hex=digest_hex,
             retries=args.retry,
+            allow_unverified=args.allow_unverified_chain,
         )
     except TimestampError as exc:
         die(f"获取时间戳失败: {exc}")
@@ -860,7 +874,10 @@ def cmd_status(args: argparse.Namespace) -> int:
             good, bad = verify_entries(p, entries, jobs=_jobs(args))
         except ManifestError as exc:
             die(str(exc))
-        extras = [] if args.allow_unlisted else find_unlisted(
+        extras: list[str] = []
+        _unused_skipped: list[str] = []
+        if not args.allow_unlisted:
+            extras, _unused_skipped = find_unlisted(
             p, {rel for _, rel in entries}, excludes=_excludes(args), follow_symlinks=_follow(args)
         )
         ok = result["ok"] and not bad and not extras
@@ -875,6 +892,8 @@ def cmd_status(args: argparse.Namespace) -> int:
                   f"{len(good)}/{len(entries)} 个文件一致"
                   + (f"，{len(extras)} 个未列入清单" if extras else ""))
         _audit(args, "status", path=str(p), ok=ok)
+        if args.json:
+            print(json.dumps({"skipped": _unused_skipped}, ensure_ascii=False))
         return 0 if ok else 1
 
     if not p.is_file():
@@ -962,11 +981,18 @@ def cmd_unpack(args: argparse.Namespace) -> int:
         _audit(args, "unpack", path=str(dest), ok=True, verified=False)
         return 0
     included_pub = dest / "hashseal-public.pem"
-    pub = Path(_exp(args.pubkey)) if args.pubkey else (
-        included_pub if included_pub.is_file() else _pub_path(args)
-    )
-    if included_pub.is_file() and not args.pubkey:
-        warn("使用的是 bundle 内置公钥，请通过可信渠道核对指纹")
+    pub = Path(_exp(args.pubkey)) if args.pubkey else None
+    if not pub and included_pub.is_file():
+        if args.trust_embedded_key:
+            warn("⚠️ 信任 bundle 内置公钥（--trust-embedded-key）。请通过独立渠道核对指纹。")
+            pub = included_pub
+        else:
+            die(
+                "bundle 内置公钥无法保证可信。请用 -k 指定可信公钥，"
+                "或加 --trust-embedded-key 接受内置公钥。"
+            )
+    if not pub:
+        pub = _pub_path(args)
     verify_args = build_parser().parse_args([
         "verify", str(dest), "-p", str(pub),
         "--exclude", "hashseal-bundle.json",
@@ -982,7 +1008,7 @@ def cmd_attest(args: argparse.Namespace) -> int:
     root = Path(_exp(args.dir))
     key = _signing_key(args)
     try:
-        statement = build_statement(root, predicate_type=args.predicate_type)
+        statement = build_statement(root, private_key=key, predicate_type=args.predicate_type)
     except (AttestError, ManifestError) as exc:
         die(str(exc))
     envelope = sign_statement(statement, key)
@@ -1201,6 +1227,7 @@ def build_parser() -> argparse.ArgumentParser:
     sg.add_argument("-j", "--jobs", type=int, default=None, help="并行哈希线程数")
     sg.add_argument("--follow-symlinks", action="store_true", default=None)
     sg.add_argument("--force", action="store_true")
+    sg.add_argument("--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝")
     sg.set_defaults(func=cmd_sign)
 
     vf = sub.add_parser("verify", help="验证文件/目录与签名")
@@ -1223,6 +1250,7 @@ def build_parser() -> argparse.ArgumentParser:
     vf.add_argument("--follow-symlinks", action="store_true", default=None)
     vf.add_argument("-j", "--jobs", type=int, default=None, help="并行校验线程数")
     vf.add_argument("--json", action="store_true")
+    vf.add_argument("--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝")
     vf.set_defaults(func=cmd_verify)
 
     ts = sub.add_parser("timestamp", help="向 TSA 申请 RFC 3161 可信时间戳")
@@ -1234,6 +1262,7 @@ def build_parser() -> argparse.ArgumentParser:
     ts.add_argument("--retry", type=int, default=2)
     ts.add_argument("--force", action="store_true")
     ts.add_argument("--json", action="store_true")
+    ts.add_argument("--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝")
     ts.set_defaults(func=cmd_timestamp)
 
     d = sub.add_parser("diff", help="对比两份清单")
@@ -1266,6 +1295,7 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--timeout", type=float, default=30.0)
     rn.add_argument("--retry", type=int, default=2)
     rn.add_argument("--force", action="store_true")
+    rn.add_argument("--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝")
     rn.set_defaults(func=cmd_renew)
 
     bd = sub.add_parser("bundle", help="把已签名目录打包为可分发 zip")
@@ -1286,6 +1316,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="公钥 PEM（-p/--pubkey 为兼容别名）")
     up.add_argument("--force", action="store_true")
     up.add_argument("--no-verify", action="store_true")
+    up.add_argument("--trust-embedded-key", action="store_true",
+                    help="接受 bundle 内置公钥（默认拒绝）")
     up.set_defaults(func=cmd_unpack)
 
     cf = sub.add_parser("config", help="显示配置路径与生效配置")

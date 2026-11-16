@@ -16,6 +16,7 @@ from .core import (
     parse_record,
     public_fingerprint,
     sha256_file,
+    verify_record,
 )
 from .manifest import find_manifest, parse_manifest
 
@@ -43,7 +44,12 @@ def pae(payload_type: str, payload: bytes) -> bytes:
     )
 
 
-def build_statement(root: Path, *, predicate_type: str = DEFAULT_PREDICATE) -> dict:
+def build_statement(
+    root: Path,
+    *,
+    private_key: ed25519.Ed25519PrivateKey,
+    predicate_type: str = DEFAULT_PREDICATE,
+) -> dict:
     found = find_manifest(root)
     if found is None:
         raise AttestError(f"{root} 尚未签名（先执行 hashseal sign {root}）")
@@ -54,6 +60,12 @@ def build_statement(root: Path, *, predicate_type: str = DEFAULT_PREDICATE) -> d
     entries = parse_manifest(manifest)
     record = parse_record(sig)
     tsr = Path(str(sig) + ".tsr")
+    if not private_key:
+        raise AttestError("需要私钥以验证清单签名")
+    pub = private_key.public_key()
+    verify_result = verify_record(record, manifest, pub)
+    if not verify_result["ok"]:
+        raise AttestError("清单签名无效，拒绝为可能被篡改的内容生成证明")
     predicate = {
         "tool": {"name": "hashseal", "version": __version__},
         "manifest": {

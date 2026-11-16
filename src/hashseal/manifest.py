@@ -114,6 +114,9 @@ def build_manifest(
         except ValueError as exc:
             raise ManifestError(f"{p} 不在基准目录 {base} 下；请用 --base 指定") from exc
         rel = PurePosixPath(shown.as_posix())
+        for part in rel.parts:
+            if "\n" in part or "\r" in part:
+                raise ManifestError(f"文件名包含换行符: {part!r}")
         if rel.as_posix() in seen:
             continue
         seen.add(rel.as_posix())
@@ -219,16 +222,25 @@ def find_unlisted(
     *,
     excludes: tuple[str, ...] = (),
     follow_symlinks: bool = False,
-) -> list[str]:
-    """找出目录中存在、但清单未收录的文件（检测“新增文件”）。"""
+) -> tuple[list[str], list[str]]:
+    """找出目录中存在、但清单未收录的文件；同时报告被跳过的条目。
+
+    返回 (未列入清单, 被跳过的条目)。
+    """
     patterns = tuple(DEFAULT_EXCLUDES) + tuple(excludes)
     root_resolved = root.resolve()
     extras: list[str] = []
+    skipped: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root, followlinks=follow_symlinks):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
         for f in sorted(filenames):
             fp = Path(dirpath) / f
             if fp.is_symlink() and not follow_symlinks:
+                try:
+                    _ = fp.resolve().relative_to(root_resolved)
+                except ValueError:
+                    pass
+                skipped.append(f"symlink: {fp}")
                 continue
             if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
                 continue
@@ -238,10 +250,11 @@ def find_unlisted(
                 continue
             rel_posix = PurePosixPath(rel.as_posix())
             if _excluded(rel_posix, patterns):
+                skipped.append(f"excluded: {rel_posix.as_posix()}")
                 continue
             if rel_posix.as_posix() not in listed:
                 extras.append(rel_posix.as_posix())
-    return extras
+    return extras, skipped
 
 
 def diff_manifests(left: list[tuple[str, str]], right: list[tuple[str, str]]) -> dict:

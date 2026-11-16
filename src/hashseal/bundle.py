@@ -68,7 +68,7 @@ def create_bundle(
     if bad:
         raise BundleError(f"清单校验失败：{len(bad)} 个文件不一致，拒绝打包")
 
-    extras = find_unlisted(root, {rel for _, rel in entries})
+    extras, _skipped = find_unlisted(root, {rel for _, rel in entries})
     if extras and not allow_unlisted:
         raise BundleError(
             f"目录中有未列入清单的文件（{len(extras)} 个），先用 --allow-unlisted 或重新签名"

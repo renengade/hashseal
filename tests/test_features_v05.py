@@ -246,7 +246,7 @@ class FeatureTest(unittest.TestCase):
         self.assertTrue(bundle.is_file())
 
         dest = self.tmp / "out"
-        rc, out = self._run("unpack", str(bundle), "-d", str(dest))
+        rc, out = self._run("unpack", str(bundle), "-d", str(dest), "-k", str(self.pub))
         self.assertEqual(rc, 0, out)
         self.assertIn("通过", out)
         self.assertTrue((dest / "x.txt").is_file())

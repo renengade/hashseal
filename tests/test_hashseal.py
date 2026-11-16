@@ -443,6 +443,7 @@ class TimestampTest(unittest.TestCase):
                 hashlib.sha256(self.sig.read_bytes()).digest(),
                 data_path=self.sig,
                 ca_path=self.pub,  # 拿公钥冒充 CA，必然失败
+                chain_required=True,
             )
 
     def test_verify_with_timestamp_cli(self) -> None:
