@@ -646,7 +646,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     info = _verify_file(p, sig_path, pub, args)
     result, ts_info, ts_error = info["result"], info["ts_info"], info["ts_error"]
-    record = info["record"]
     ok = result["ok"] and ts_error is None
 
     if args.json:
