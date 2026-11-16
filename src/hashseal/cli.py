@@ -553,7 +553,7 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
             print(f"  - {rel}")
     if skipped:
         print(f"被跳过条目  : ℹ️  {len(skipped)} 个（.env/symlink 等不参与哈希校验）")
-        for item in skipped:
+        for item in skipped:  # type: ignore[assignment]
             print(f"  - {item}")
     return 0 if ok else 1
 
