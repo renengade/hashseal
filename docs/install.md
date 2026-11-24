@@ -34,14 +34,19 @@ irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 |
 
 ## SHA-256 校验
 
-Release 页有 `SHA256SUMS`（含 wheel、sdist、安装脚本）：
+Release 页的 `SHA256SUMS` 覆盖 wheel、sdist 与安装脚本。脚本默认下载的是
+GitHub 自动打包的 tag archive（它的哈希**不在** `SHA256SUMS` 中）；要校验，
+请显式指定 Release 的 sdist：
 
 ```bash
-curl -fsSL .../install.sh | HASHSEAL_SHA256=<源码包对应的 sha256> sh
+HASHSEAL_URL=https://github.com/renengade/hashseal/releases/download/v0.10.4/hashseal-0.10.4.tar.gz \
+HASHSEAL_SHA256=<SHA256SUMS 中 hashseal-0.10.4.tar.gz 的值> \
+  curl -fsSL .../install.sh | sh
 ```
 
 ```powershell
-$env:HASHSEAL_SHA256 = "<源码包对应的 sha256>"
+$env:HASHSEAL_URL = "https://github.com/renengade/hashseal/releases/download/v0.10.4/hashseal-0.10.4.tar.gz"
+$env:HASHSEAL_SHA256 = "<SHA256SUMS 中 hashseal-0.10.4.tar.gz 的值>"
 irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 | iex
 ```
 
