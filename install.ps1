@@ -1,8 +1,11 @@
-﻿# hashseal installer（Windows PowerShell 5.1+，无需 WSL）
+# hashseal installer（Windows PowerShell 5.1+，无需 WSL）
 #
 #   irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
 #
-# 安装到 uv 的独立工具环境（不污染系统 Python），并把 hashseal 加入用户 PATH。
+# 注意：本文件必须保存为 UTF-8（无 BOM）+ CRLF——BOM 会让 `irm | iex` 把首行
+# 解析成命令而出错（PS5.1 双击/落盘运行无 BOM 文件会按 ANSI 误读中文，因此
+# 落盘运行请先：Get-Content -Raw -Encoding UTF8 install.ps1 | iex）。
+#
 # 可用环境变量覆盖（与 install.sh 一致）：
 #   HASHSEAL_REF=v0.10.0   指定 tag/分支（生产建议锁定 tag；main 表示跟随开发分支）
 #   HASHSEAL_REPO=owner/repo
@@ -22,6 +25,27 @@ $ArchiveBase = if ($env:HASHSEAL_ARCHIVE_BASE) { $env:HASHSEAL_ARCHIVE_BASE } el
 function Say($msg) { Write-Host $msg }
 function Die($msg) { Write-Error $msg; exit 1 }
 
+function Resolve-LatestViaRedirect {
+    # releases/latest 是 302 → Location 头就是最新 tag。
+    # 用 .NET HttpWebRequest 关自动跳转，跨 PS5.1/PS7 都能拿到 Location。
+    $resp = $null
+    try {
+        $req = [System.Net.HttpWebRequest]::Create("https://github.com/$Repo/releases/latest")
+        $req.AllowAutoRedirect = $false
+        $req.Timeout = 15000
+        $req.UserAgent = "hashseal-installer"
+        try { $resp = $req.GetResponse() } catch { $resp = $_.Exception.Response }
+        if (-not $resp) { return $null }
+        $loc = $resp.Headers["Location"]
+        if (-not $loc) { return $null }
+        $tag = ($loc -replace ".*/tag/", "").Trim()
+        if ($tag -match "^[A-Za-z0-9._-]+$") { return $tag }
+        return $null
+    } finally {
+        if ($resp) { $resp.Close() }
+    }
+}
+
 function Resolve-Latest {
     # 方式 1: GitHub API
     try {
@@ -31,21 +55,10 @@ function Resolve-Latest {
         if ($json.tag_name) { return [string]$json.tag_name }
     } catch { }
 
-    # 方式 2: releases/latest 302 redirect（不需要 API）
-    try {
-        $resp = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" `
-            -MaximumRedirection 0 -UseBasicParsing -ErrorAction SilentlyContinue
-        if (-not $resp -and $?) { }
-    } catch {
-        $resp = $_.Exception.Response
-    }
-    if ($resp -and $resp.Headers) {
-        $loc = $resp.Headers["Location"]
-        if ($loc) {
-            $tag = ($loc -replace ".*/tag/", "").Trim()
-            if ($tag -match "^[A-Za-z0-9._-]+$") { return $tag }
-        }
-    }
+    # 方式 2: 302 redirect（不需要 API）
+    $tag = Resolve-LatestViaRedirect
+    if ($tag) { return $tag }
+
     throw "latest"
 }
 
@@ -74,7 +87,7 @@ if ($env:HASHSEAL_URL) {
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Say "未找到 uv，正在安装（https://astral.sh/uv）..."
     $script = Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1"
-    ($script | Invoke-Expression) 2>&1 | Out-Null
+    ($script | Invoke-Expression) | Out-Null
     $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
 }
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
@@ -109,9 +122,10 @@ try {
     Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
 }
 
-# 4) 确保 hashseal 在 PATH 上（写入用户级 PATH）
+# 4) 确保 hashseal 在 PATH 上（当前会话 + 用户级持久化）
 $BinDir = "$env:USERPROFILE\.local\bin"
-try { $uvBin = (uv tool dir --bin) 2>$null; if ($LASTEXITCODE -eq 0 -and $uvBin) { $BinDir = $uvBin } } catch { }
+try { $uvBin = (uv tool dir --bin) 2>$null; if ($LASTEXITCODE -eq 0 -and $uvBin) { $BinDir = ($uvBin | Select-Object -First 1) } } catch { }
+$env:Path = "$BinDir;$env:Path"
 
 Say ""
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")

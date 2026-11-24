@@ -17,11 +17,12 @@ class InstallScriptTest(unittest.TestCase):
         result = subprocess.run([sh, "-n", str(ROOT / "install.sh")], check=False, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
 
-    def test_install_ps1_has_utf8_bom_and_crlf(self) -> None:
-        # Windows PowerShell 5.1 对无 BOM 的 UTF-8 按 ANSI 读取，中文会损坏
+    def test_install_ps1_no_bom_and_crlf(self) -> None:
+        # `irm | iex` 会把 BOM 当作首行命令导致报错 → 文件必须无 BOM；
+        # 落盘运行（PS5.1）需 `Get-Content -Encoding UTF8 | iex`（脚本头部已注明）。
         raw = (ROOT / "install.ps1").read_bytes()
-        self.assertTrue(raw.startswith(b"\xef\xbb\xbf"), "install.ps1 缺少 UTF-8 BOM")
-        text = raw.decode("utf-8-sig")
+        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"), "install.ps1 不能带 UTF-8 BOM")
+        text = raw.decode("utf-8")
         self.assertIn("\r\n", text, "install.ps1 应使用 CRLF")
 
     def test_install_ps1_powershell_syntax(self) -> None:
@@ -42,9 +43,9 @@ class InstallScriptTest(unittest.TestCase):
             if win_path.returncode != 0:
                 self.skipTest("wslpath 不可用（非 WSL 环境）")
             cmd = (
-                "try { [void][scriptblock]::Create((Get-Content -Raw -LiteralPath "
+                "try { $t = Get-Content -Raw -Encoding UTF8 -LiteralPath "
                 f"'{win_path.stdout.strip()}'"
-                ")); 'OK' } catch { Write-Error $_.Exception.Message; exit 1 }"
+                "; [void][scriptblock]::Create($t); 'OK' } catch { Write-Error $_.Exception.Message; exit 1 }"
             )
             result = subprocess.run([exe, "-NoProfile", "-Command", cmd], check=False, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout.decode() + result.stderr.decode())
