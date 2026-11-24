@@ -514,6 +514,11 @@ progress.runbar { width: 200px; height: 6px; accent-color: var(--accent); }
   border: 1px solid rgba(236, 196, 141, 0.3); border-radius: var(--radius-control);
   background: rgba(236, 196, 141, 0.06); color: var(--warn); font-size: 13px;
 }
+.note-bar svg {
+  width: 18px; height: 18px; flex: none;
+  stroke: currentColor; fill: none; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round;
+}
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 960px) {

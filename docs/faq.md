@@ -34,10 +34,11 @@ A：服务重启后 token 会变化。回终端复制新地址（含 `#token=…
 **Q：GUI 提示路径不在允许的根目录？**
 A：启动时加 `--root <目录>`，可多次指定。
 
-**Q：Windows 上签名报错「未安装 openssl」？**
-A：时间戳链校验需要 OpenSSL。安装 `winget install ShiningLight.OpenSSL.Light`
-（或把 Git for Windows 的 openssl 加入 PATH）；明确接受风险可用
-`--allow-unverified-chain`（只跳过链校验）。
+**Q：Windows 上签名报错「未安装 openssl」，必须安装吗？**
+A：不是必须。只有**时间戳的 TSA 证书链校验**需要它；普通签名/验证、目录、bundle、
+审计都不需要。不用时间戳可无视；需要时安装
+`winget install ShiningLight.OpenSSL.Light`（或把 Git for Windows 的 openssl 加入 PATH），
+装完刷新 GUI 即可。明确接受风险可用 `--allow-unverified-chain`（只跳过链校验）。
 
 **Q：Windows 的 TOML 配置写了 `C:\...` 读不出来？**
 A：双引号里的 `\` 是转义。改成 `C:/...` 或单引号 `'C:\...'`；hashseal 会提示这一点。

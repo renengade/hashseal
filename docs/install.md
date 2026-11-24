@@ -83,7 +83,7 @@ WSL 与 Windows 是**两套独立安装**（各自的密钥、配置、审计目
 
 ## Windows 与 TSA 证书链
 
-时间戳的证书链校验依赖系统 `openssl`。Windows 默认不带：
+时间戳的证书链校验依赖系统 `openssl`（**普通签名/验证不需要**）。Windows 默认不带：
 
 - `sign --timestamp`、`timestamp`、`renew` 会给出可执行提示（不会静默通过）；
 - 验证时间戳（`verify --tsr`）严格模式同样失败并提示安装；
