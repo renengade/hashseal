@@ -14,7 +14,7 @@ class LifecycleTest(GuiTestBase):
     def test_status_and_commands(self) -> None:
         status, payload = self.request("/api/status")
         self.assertEqual(status, 200)
-        self.assertIn(str(self.tmp), payload["roots"])
+        self.assertIn(str(self.tmp.resolve()), payload["roots"])
         status, payload = self.request("/api/commands")
         self.assertEqual(status, 200)
         names = {c["name"] for c in payload["commands"]}
@@ -145,7 +145,7 @@ class VaultTest(GuiTestBase):
         self.assertTrue(payload["fingerprint"].startswith("SHA256:"))
 
         status, payload = self.request("/api/vault")
-        self.assertIn(str(priv), payload["keys"])
+        self.assertIn(str(priv.resolve()), payload["keys"])
 
         # 记住的口令可直接签名
         target = self.tmp / "v.txt"
@@ -184,7 +184,7 @@ class VaultTest(GuiTestBase):
         )
         self.assertEqual(task["state"], "succeeded", task)
         _status, payload = self.request("/api/vault")
-        self.assertIn(str(priv), payload["keys"])
+        self.assertIn(str(priv.resolve()), payload["keys"])
 
     def test_wrong_password_fails_with_clear_error(self) -> None:
         priv, pub = self.make_keypair("wp")

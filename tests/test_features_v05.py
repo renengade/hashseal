@@ -17,6 +17,13 @@ from unittest import mock
 import hashseal
 from hashseal import audit, cli, tsa
 
+try:  # Windows 无 syslog 模块
+    import syslog as _syslog  # noqa: F401
+
+    HAS_SYSLOG = True
+except ImportError:
+    HAS_SYSLOG = False
+
 
 class FeatureTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -209,6 +216,7 @@ class FeatureTest(unittest.TestCase):
         self.assertIn("old", lines[0])
         self.assertIn("new", lines[1])
 
+    @unittest.skipUnless(HAS_SYSLOG, "Windows 无 syslog 模块")
     def test_syslog_sink_does_not_write_file(self) -> None:
         log = self.tmp / "syslog.jsonl"
         cfg = {"audit_sink": "syslog", "audit_file": str(log)}

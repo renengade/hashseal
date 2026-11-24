@@ -89,17 +89,17 @@ class PathDefaultsTest(unittest.TestCase):
 
     def test_fixed_name_defaults_anchored_to_cwd(self) -> None:
         commands = self._commands()
+        def rp(name: str) -> str:
+            return str((self.tmp / name).resolve())
+
         self.assertEqual(
-            self._field(commands["manifest"], "output")["default"],
-            str(self.tmp / "MANIFEST.sha256"),
+            self._field(commands["manifest"], "output")["default"], rp("MANIFEST.sha256")
         )
         self.assertEqual(
-            self._field(commands["sbom"], "output")["default"],
-            str(self.tmp / "sbom.cdx.json"),
+            self._field(commands["sbom"], "output")["default"], rp("sbom.cdx.json")
         )
         self.assertEqual(
-            self._field(commands["attest"], "output")["default"],
-            str(self.tmp / "attestation.json"),
+            self._field(commands["attest"], "output")["default"], rp("attestation.json")
         )
 
 

@@ -195,10 +195,10 @@ def _write_syslog(line: str, facility_name: str) -> bool:
         import syslog  # Unix only
     except ImportError:
         return False
-    facility = getattr(syslog, f"LOG_{facility_name.upper()}", syslog.LOG_USER)
+    facility = getattr(syslog, f"LOG_{facility_name.upper()}", syslog.LOG_USER)  # type: ignore[attr-defined]
     try:
-        syslog.openlog("hashseal", syslog.LOG_PID, facility)
-        syslog.syslog(syslog.LOG_INFO, line.rstrip("\n"))
+        syslog.openlog("hashseal", syslog.LOG_PID, facility)  # type: ignore[attr-defined]
+        syslog.syslog(syslog.LOG_INFO, line.rstrip("\n"))  # type: ignore[attr-defined]
         return True
     except OSError:
         return False
