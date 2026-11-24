@@ -180,13 +180,50 @@ export function withCopyInside(input, { secret = false, copy = true } = {}) {
 
 const LAST_DIR_KEY = "hashseal.lastDir";
 
-function joinPath(dir, name) {
-  return dir.endsWith("/") ? dir + name : dir + "/" + name;
+/* ---------- 路径工具（同时支持 Windows C:\ / UNC 与 POSIX） ---------- */
+
+export function pathSep(p) {
+  return String(p).includes("\\") ? "\\" : "/";
 }
 
-function basename(p) {
-  const parts = String(p).replace(/\/+$/, "").split("/");
-  return parts[parts.length - 1] || p;
+export function joinPath(dir, name) {
+  if (!dir) return name;
+  if (/[\\/]$/.test(dir)) return dir + name;
+  return dir + pathSep(dir) + name;
+}
+
+export function basename(p) {
+  const text = String(p).replace(/[\\/]+$/, "");
+  const parts = text.split(/[\\/]/);
+  return parts[parts.length - 1] || String(p);
+}
+
+export function dirname(p) {
+  const text = String(p).replace(/[\\/]+$/, "");
+  if (/^[A-Za-z]:$/.test(text)) return text + "\\";
+  if (text.startsWith("\\\\")) {
+    const match = text.match(/^\\\\[^\\]+\\[^\\]+/);
+    if (match && text.length === match[0].length) return match[0] + "\\";
+  }
+  const idx = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+  if (idx < 0) return "";
+  if (idx === 0) return text[0];
+  const head = text.slice(0, idx);
+  if (/^[A-Za-z]:$/.test(head)) return head + "\\";
+  return head;
+}
+
+/** 拆成 {prefix, restParts}：C: / \\server\share / 空（POSIX）。 */
+export function splitPathParts(p) {
+  const text = String(p);
+  const unc = text.match(/^\\\\[^\\]+\\[^\\]+/);
+  if (unc) {
+    return { prefix: unc[0], restParts: text.slice(unc[0].length).split(/[\\/]+/).filter(Boolean) };
+  }
+  if (/^[A-Za-z]:/.test(text)) {
+    return { prefix: text.slice(0, 2), restParts: text.slice(2).split(/[\\/]+/).filter(Boolean) };
+  }
+  return { prefix: "", restParts: text.split(/[\\/]+/).filter(Boolean) };
 }
 
 /**
@@ -203,11 +240,11 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
     let done = false;
 
     if (mode === "out") {
-      const dir = initial ? initial.replace(/[^/]+$/, "") : "";
+      const dir = initial ? dirname(initial) : "";
       state.path = dir || null;
       state.outName = basename(initial || "");
     } else if (mode !== "multi" && initial) {
-      state.path = initial.replace(/[^/]+$/, "") || null;
+      state.path = dirname(initial) || null;
     } else if (mode !== "multi") {
       state.path = sessionStorage.getItem(LAST_DIR_KEY) || null;
     }
@@ -283,15 +320,19 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       crumbs.textContent = "";
       crumbs.append(el("button", { type: "button", onclick: () => navigate("") }, "根目录"));
       if (!state.path) return;
-      const parts = state.path.split("/").filter(Boolean);
-      let acc = "";
-      crumbs.append(el("span", { class: "sep" }, "/"));
-      parts.forEach((part, i) => {
-        acc = "/" + parts.slice(0, i + 1).join("/");
-        crumbs.append(
-          el("button", { type: "button", onclick: () => navigate(acc) }, part),
-        );
-        if (i < parts.length - 1) crumbs.append(el("span", { class: "sep" }, "/"));
+      const sep = pathSep(state.path);
+      const { prefix, restParts } = splitPathParts(state.path);
+      let acc = prefix ? prefix + sep : sep;
+      if (prefix) {
+        // C: 或 \\server\share 作为第一段
+        const label = prefix.startsWith("\\\\") ? prefix : prefix + sep;
+        crumbs.append(el("span", { class: "sep" }, sep));
+        crumbs.append(el("button", { type: "button", onclick: () => navigate(acc) }, label));
+      }
+      restParts.forEach((part, i) => {
+        acc = acc.endsWith(sep) ? acc + part : acc + sep + part;
+        crumbs.append(el("button", { type: "button", onclick: () => navigate(acc) }, part));
+        if (i < restParts.length - 1) crumbs.append(el("span", { class: "sep" }, sep));
       });
     }
 
@@ -849,7 +890,17 @@ function genericKv(result, skip = new Set()) {
 
 export function taskResult(command, task) {
   const kids = [];
-  if (task.state === "failed") {
+  const r = task.result || {};
+  const partialSign = command === "sign" && task.state === "failed"
+    && (r.items || []).length > 0 && !r.cancelled;
+  if (partialSign) {
+    kids.push(el("div", { class: "banner warn" }, icon("alert"),
+      el("div", {},
+        el("strong", {}, "签名已生成，但时间戳未完成"),
+        el("div", { class: "sub" },
+          "签名文件仍然有效。安装 OpenSSL 后可在「时间戳与证明 → 续期时间戳」重试；" +
+          "或在高级选项中关闭时间戳后重新签名。"))));
+  } else if (task.state === "failed") {
     kids.push(el("div", { class: "banner fail" }, icon("alert"),
       el("div", {}, el("strong", {}, "执行失败"), task.error ? el("div", { class: "sub" }, task.error) : null)));
   } else if (task.state === "canceled") {
@@ -860,7 +911,6 @@ export function taskResult(command, task) {
       el("div", {}, el("strong", {}, "执行成功"), el("div", { class: "sub" }, `退出码 ${task.rc ?? 0}`))));
   }
 
-  const r = task.result || {};
   if (command === "verify") kids.push(...verifyResultCard(task));
   else if (command === "status") kids.push(...statusResultCard(task));
   else if (command === "sign") {

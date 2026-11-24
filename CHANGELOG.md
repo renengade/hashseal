@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.5
+
+### Fixed（GUI · P0）
+
+- Windows 路径工具：选择器的 basename/joinPath/面包屑/初始目录全部兼容 `C:\`、`C:/` 与 UNC，
+  修复「浏览…」丢失当前目录、保存模式文件名错误、面包屑错乱。
+- 移除 GUI `hash` 表单中不存在的 `--jobs` 字段（提交会报参数错误）。
+- 无 OpenSSL 时：`/api/status` 暴露 `openssl/platform`；签名默认关闭时间戳并页面提示；
+  TSA 相关页面常驻说明。
+- 签名成功但时间戳失败时，界面显示「签名已生成，时间戳未完成」并引导续期，不再只报“执行失败”。
+
+### Added
+
+- GUI 字段 ↔ CLI parser 一致性测试（防止表单暴露不存在的参数）。
+- Node 路径工具单测（Windows/POSIX/UNC）。
+
 ## 0.10.4
 
 ### Added

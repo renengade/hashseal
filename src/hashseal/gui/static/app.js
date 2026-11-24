@@ -268,6 +268,12 @@ function pageCommands(page, sectionId) {
     content.append(el("div", { class: "note-bar" }, icon("alert"),
       el("span", {}, "只读模式：本页操作已在服务端禁用。")));
   }
+  if (state.status.openssl === false && (sectionId === "sign" || sectionId === "stamps")) {
+    content.append(el("div", { class: "note-bar" }, icon("alert"),
+      el("span", {},
+        "未检测到 OpenSSL：时间戳证书链无法校验，签名表单已默认关闭时间戳。" +
+        "安装 OpenSSL（Windows: winget install ShiningLight.OpenSSL.Light）后刷新页面即可启用。")));
+  }
 
   const tabs = el("div", { class: "cmd-tabs" });
   const cardBox = el("div", {});

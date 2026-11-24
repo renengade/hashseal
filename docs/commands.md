@@ -109,7 +109,7 @@ hashseal sign FILE|DIR... [-k KEY] [--password-file PATH] [--signer TEXT]
 | `--signer` | 空 | 署名；`hashseal/2` 起纳入签名 |
 | `--name` | 实际文件名 | 签名时记录的文件名 |
 | `--sig` | `<文件>.sig` | 签名输出（仅单目标） |
-| `--timestamp` | 关 | 签名后申请 RFC 3161 时间戳（GUI 默认开） |
+| `--timestamp` | 关 | 签名后申请 RFC 3161 时间戳（GUI 在 OpenSSL 可用时默认开） |
 | `--tsa` / `--tsa-ca` | DigiCert→Sectigo→freetsa / 内置+系统 CA | TSA 与信任根 |
 | `--timeout` / `--retry` | `30` / `2` | TSA 超时与重试 |
 | `--tsr` | `<签名>.tsr` | 时间戳输出 |

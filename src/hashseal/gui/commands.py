@@ -750,15 +750,6 @@ _COMMAND_LIST: list[Command] = [
                 label="跟随符号链接",
                 advanced=True,
             ),
-            _f(
-                name="jobs",
-                type="int",
-                flag="jobs",
-                label="并行线程数",
-                advanced=True,
-                min=1,
-                max=64,
-            ),
         ),
     ),
     Command(
@@ -1024,6 +1015,8 @@ def specs_for_frontend(
     config: dict | None = None,
     cwd: Path | None = None,
     roots: RootSet | None = None,
+    *,
+    openssl: bool = True,
 ) -> list[dict]:
     """输出给前端渲染表单；不含任何敏感内容。"""
     config = config or {}
@@ -1037,6 +1030,8 @@ def specs_for_frontend(
                 default = _path_default(command, f.name, config, cwd, roots)
             elif f.type == "bool" and f.default is not None:
                 default = f.default
+                if command.name == "sign" and f.name == "timestamp" and not openssl:
+                    default = False  # 无 openssl 时链校验不可用，默认不申请时间戳
             fields.append(
                 {
                     "name": f.name,

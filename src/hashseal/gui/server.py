@@ -28,6 +28,7 @@ from .. import __version__
 from ..audit import audit_path, read_events
 from ..config import config_path, load_config
 from ..core import die, is_encrypted_key
+from ..tsa import openssl_available
 from . import commands as gui_commands
 from .security import (
     ApiError,
@@ -215,7 +216,10 @@ class GuiHandler(BaseHTTPRequestHandler):
                         "sections": gui_commands.SECTIONS,
                         "section_commands": gui_commands.SECTION_COMMANDS,
                         "commands": gui_commands.specs_for_frontend(
-                            config=cfg, cwd=Path.cwd(), roots=server.roots
+                            config=cfg,
+                            cwd=Path.cwd(),
+                            roots=server.roots,
+                            openssl=openssl_available(),
                         ),
                     }
                 )
@@ -272,6 +276,8 @@ class GuiHandler(BaseHTTPRequestHandler):
         return {
             "version": __version__,
             "python": platform.python_version(),
+            "platform": platform.system().lower(),
+            "openssl": openssl_available(),
             "read_only": server.settings.read_only,
             "roots": server.roots.display,
             "config_path": str(config_path()),

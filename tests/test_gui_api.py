@@ -20,6 +20,10 @@ class LifecycleTest(GuiTestBase):
             any(os.path.samefile(r, self.tmp) for r in payload["roots"] if Path(r).exists()),
             payload["roots"],
         )
+        # 能力探测：平台 / openssl
+        self.assertIn("platform", payload)
+        self.assertIn("openssl", payload)
+        self.assertIsInstance(payload["openssl"], bool)
         status, payload = self.request("/api/commands")
         self.assertEqual(status, 200)
         names = {c["name"] for c in payload["commands"]}
@@ -341,3 +345,21 @@ class KeyInfoTest(GuiTestBase):
             "/api/key-info?key=" + urllib.parse.quote(str(priv))
         )
         self.assertTrue(payload["remembered"])
+
+
+class OpenSslCapabilityTest(GuiTestBase):
+    def test_timestamp_default_follows_openssl(self) -> None:
+        from unittest import mock
+
+        def sign_timestamp_default(data: dict) -> object:
+            sign = next(c for c in data["commands"] if c["name"] == "sign")
+            return next(f for f in sign["fields"] if f["name"] == "timestamp")["default"]
+
+        with mock.patch("hashseal.gui.server.openssl_available", return_value=True):
+            status, data = self.request("/api/commands")
+            self.assertEqual(status, 200)
+            self.assertTrue(sign_timestamp_default(data))
+        with mock.patch("hashseal.gui.server.openssl_available", return_value=False):
+            status, data = self.request("/api/commands")
+            self.assertEqual(status, 200)
+            self.assertFalse(sign_timestamp_default(data))

@@ -8,7 +8,7 @@
 - `--tsa-ca` 覆盖信任根；显式给出则严格校验证书链
 - `--tsa` 可逗号分隔多个，或 `HASHSEAL_TSA` 环境变量
 
-GUI 中「申请可信时间戳」**默认勾选**；CLI 需要显式 `--timestamp`。
+GUI 中「申请可信时间戳」在 OpenSSL 可用时**默认勾选**（不可用时自动关闭并提示）；CLI 需要显式 `--timestamp`。
 
 ## 证书链校验与 openssl
 
