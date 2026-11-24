@@ -82,7 +82,7 @@ function renderFatal(err) {
 
 /* ---------- 路由 ---------- */
 
-const NAV_ORDER = ["", "verify", "sign", "keys", "dirs", "stamps", "tools", "audit", "settings"];
+const NAV_ORDER = ["", "keys", "sign", "verify", "stamps", "dirs", "tools", "audit", "settings"];
 
 function route() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -138,9 +138,9 @@ async function pageDashboard(page) {
       el("p", { class: "hero-sub" },
         "在浏览器完成签名、验证、时间戳与分发校验；与 CLI 共用同一套密钥、配置与审计日志。"),
       el("div", { class: "hero-actions" },
-        el("button", { class: "btn btn-primary", onclick: () => { location.hash = "#/verify"; } }, "开始验证"),
+        el("button", { class: "btn btn-primary", onclick: () => { location.hash = "#/keys"; } }, "生成密钥"),
         el("button", { class: "btn btn-ghost", onclick: () => { location.hash = "#/sign"; } }, "签名文件"),
-        el("button", { class: "btn btn-ghost", onclick: () => { location.hash = "#/keys"; } }, "生成密钥")),
+        el("button", { class: "btn btn-ghost", onclick: () => { location.hash = "#/verify"; } }, "开始验证")),
       el("div", { class: "hero-art", "aria-hidden": "true", html:
         '<svg viewBox="0 0 300 170" fill="none" stroke="currentColor" stroke-width="1">' +
         '<circle cx="215" cy="55" r="42"/><path d="M198 55l12 12 22-24"/>' +
@@ -151,17 +151,17 @@ async function pageDashboard(page) {
   );
 
   const quick = el("div", { class: "quick-grid" });
-  for (const [section, iconName, text] of [
-    ["verify", "shield", "验证文件或目录"],
-    ["sign", "pen", "签名并加时间戳"],
-    ["keys", "key", "查看公钥指纹"],
+  for (const [section, iconName, text, desc] of [
+    ["keys", "key", "第一步：生成密钥", "生成 Ed25519 密钥对，核对公钥指纹"],
+    ["sign", "pen", "第二步：签名文件", "生成 .sig，可选 RFC 3161 时间戳"],
+    ["verify", "shield", "第三步：验证签名", "核对内容、签名者与时间戳"],
   ]) {
     quick.append(el("button", {
       class: "card quick-card", type: "button",
       onclick: () => { location.hash = "#/" + section; },
     },
       el("div", { class: "card-title" }, icon(iconName), text),
-      el("p", { class: "card-desc", style: "margin:6px 0 0" }, SECTION_LABEL[section])));
+      el("p", { class: "card-desc", style: "margin:6px 0 0" }, desc)));
   }
 
   const dash = el("div", { class: "dash-cols", style: "margin-top:18px" });

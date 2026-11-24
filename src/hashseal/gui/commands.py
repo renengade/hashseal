@@ -768,11 +768,11 @@ _COMMAND_LIST: list[Command] = [
 COMMANDS: dict[str, Command] = {c.name: c for c in _COMMAND_LIST}
 
 SECTIONS: list[dict[str, str]] = [
-    {"id": "verify", "label": "验证", "desc": "核对签名、时间戳与目录完整性"},
-    {"id": "sign", "label": "签名", "desc": "为文件/目录生成签名与时间戳"},
     {"id": "keys", "label": "密钥", "desc": "生成密钥对、核对公钥指纹、口令保管"},
-    {"id": "dirs", "label": "目录与分发", "desc": "清单、对比、打包、解包、SBOM"},
+    {"id": "sign", "label": "签名", "desc": "为文件/目录生成签名与时间戳"},
+    {"id": "verify", "label": "验证", "desc": "核对签名、时间戳与目录完整性"},
     {"id": "stamps", "label": "时间戳与证明", "desc": "RFC 3161 时间戳与 in-toto 证明"},
+    {"id": "dirs", "label": "目录与分发", "desc": "清单、对比、打包、解包、SBOM"},
     {"id": "tools", "label": "工具", "desc": "哈希、元数据、OpenTimestamps"},
     {"id": "settings", "label": "设置", "desc": "配置、模板与只读信息"},
 ]
