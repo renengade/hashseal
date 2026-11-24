@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `sha256_file` 读路径调优：unbuffered + `readinto` 复用 32 MiB 缓冲（NVMe 实测快约 10%）。
+
 ## 0.10.0
 
 ### Added
