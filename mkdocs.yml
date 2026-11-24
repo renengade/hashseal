@@ -18,6 +18,7 @@ nav:
   - 快速上手: index.md
   - 核心概念: concepts.md
   - 命令详解: commands.md
+  - GUI 界面: gui.md
   - 时间戳: timestamps.md
   - 证明与 SBOM: attest.md
   - 审计与配置: audit.md

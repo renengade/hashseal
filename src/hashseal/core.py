@@ -22,6 +22,9 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
 
+from .result import current as _current_context
+from .result import warn_sink as _warn_sink
+
 FORMAT = "hashseal/2"
 LEGACY_FORMATS = {"hashseal/1", "fileproof/1"}
 ALLOWED_FORMATS = {FORMAT} | LEGACY_FORMATS
@@ -64,11 +67,19 @@ DEFAULT_EXCLUDES = (
 
 
 def die(msg: str, code: int = 2) -> NoReturn:
+    ctx = _current_context()
+    if ctx is not None:
+        ctx.error = msg
+        ctx.error_code = code
     print(f"错误: {msg}", file=sys.stderr)
     raise SystemExit(code)
 
 
 def warn(msg: str) -> None:
+    sink = _warn_sink()
+    if sink is not None:
+        sink(msg)
+        return
     print(f"警告: {msg}", file=sys.stderr)
 
 
@@ -150,18 +161,13 @@ def fmt_time(value: str | None) -> str:
         dt = dt.replace(tzinfo=timezone.utc)
     local = dt.astimezone()
     utc = dt.astimezone(timezone.utc)
-    return (
-        f"{local.strftime('%Y-%m-%d %H:%M:%S %z')}"
-        f"（UTC {utc.strftime('%Y-%m-%d %H:%M:%S')}）"
-    )
+    return f"{local.strftime('%Y-%m-%d %H:%M:%S %z')}（UTC {utc.strftime('%Y-%m-%d %H:%M:%S')}）"
 
 
 def atomic_write_bytes(path: Path, data: bytes, mode: int | None = None) -> None:
     """原子写入：同目录临时文件 + fsync + os.replace，避免半写文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
-    )
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     tmp = Path(tmp_name)
     try:
         with os.fdopen(fd, "wb") as f:
@@ -204,36 +210,49 @@ def _encrypt_pkcs8(key_der: bytes, password: bytes) -> bytes:
     encryptor = Cipher(algorithms.AES(derived), modes.CBC(iv)).encryptor()
     ciphertext = encryptor.update(padded) + encryptor.finalize()
 
-    kdf_params = asn1_algos.Pbkdf2Params({
-        "salt": asn1_core.OctetString(salt),
-        "iteration_count": KDF_ITERATIONS,
-        "key_length": 32,
-        "prf": asn1_algos.HmacAlgorithm({"algorithm": "1.2.840.113549.2.9"}),  # hmacWithSHA256
-    })
-    pbes2 = asn1_algos.Pbes2Params({
-        "key_derivation_func": asn1_algos.KdfAlgorithm({
-            "algorithm": "pbkdf2",
-            "parameters": kdf_params,
-        }),
-        "encryption_scheme": asn1_algos.EncryptionAlgorithm({
-            "algorithm": "aes256_cbc",
-            "parameters": asn1_core.OctetString(iv),
-        }),
-    })
+    kdf_params = asn1_algos.Pbkdf2Params(
+        {
+            "salt": asn1_core.OctetString(salt),
+            "iteration_count": KDF_ITERATIONS,
+            "key_length": 32,
+            "prf": asn1_algos.HmacAlgorithm({"algorithm": "1.2.840.113549.2.9"}),  # hmacWithSHA256
+        }
+    )
+    pbes2 = asn1_algos.Pbes2Params(
+        {
+            "key_derivation_func": asn1_algos.KdfAlgorithm(
+                {
+                    "algorithm": "pbkdf2",
+                    "parameters": kdf_params,
+                }
+            ),
+            "encryption_scheme": asn1_algos.EncryptionAlgorithm(
+                {
+                    "algorithm": "aes256_cbc",
+                    "parameters": asn1_core.OctetString(iv),
+                }
+            ),
+        }
+    )
 
-    der = _EncryptedPrivateKeyInfo({
-        "encryptionAlgorithm": asn1_algos.EncryptionAlgorithm({
-            "algorithm": "pbes2",
-            "parameters": pbes2,
-        }),
-        "encryptedData": asn1_core.OctetString(ciphertext),
-    }).dump()
+    der = _EncryptedPrivateKeyInfo(
+        {
+            "encryptionAlgorithm": asn1_algos.EncryptionAlgorithm(
+                {
+                    "algorithm": "pbes2",
+                    "parameters": pbes2,
+                }
+            ),
+            "encryptedData": asn1_core.OctetString(ciphertext),
+        }
+    ).dump()
 
     lines = base64.encodebytes(der).decode("ascii").rstrip("\n")
     body = "\n".join(lines.split("\n"))
     return (
         "-----BEGIN ENCRYPTED PRIVATE KEY-----\n"
-        + body + "\n"
+        + body
+        + "\n"
         + "-----END ENCRYPTED PRIVATE KEY-----\n"
     ).encode("ascii")
 
@@ -321,9 +340,7 @@ def normalize_fingerprint(text: str) -> str:
 
 
 def fingerprint_matches(expected: str, key: ed25519.Ed25519PublicKey) -> bool:
-    return normalize_fingerprint(expected) == normalize_fingerprint(
-        public_fingerprint(key)
-    )
+    return normalize_fingerprint(expected) == normalize_fingerprint(public_fingerprint(key))
 
 
 # --------------------------------------------------------------------------- #
@@ -391,9 +408,7 @@ def verify_record(
     return {
         "ok": ok,
         "format": fmt,
-        "metadata_mismatch": (
-            record.get("digest") != digest or record.get("size") != size
-        ),
+        "metadata_mismatch": (record.get("digest") != digest or record.get("size") != size),
         "signer_signed": fmt == FORMAT,
         "digest": digest,
         "size": size,

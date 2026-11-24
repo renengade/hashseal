@@ -35,12 +35,16 @@ hashseal verify app.py
 # 整个目录（含时间戳）
 hashseal sign dist/ --timestamp
 hashseal verify dist/
+
+# 不喜欢命令行？启动本地 Web 界面
+hashseal gui
 ```
 
 ## 命令速查
 
 | 命令 | 用途 |
 | --- | --- |
+| `gui` | 本地 Web 界面（浏览器操作，与 CLI 同功能） |
 | `keygen` | 生成密钥对 |
 | `sign` | 签名文件/目录，可选时间戳 |
 | `verify` | 验证签名/时间戳/目录完整性 |

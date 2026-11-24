@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.0
+
+### Added
+
+- **本地 Web GUI**：`hashseal gui` 启动仅绑定 `127.0.0.1` 的零依赖 Web 界面，浏览器完成全部 CLI 功能（验证/签名/密钥/清单/bundle/时间戳/证明/SBOM/审计/配置）。
+- GUI 安全模型：随机 token（URL fragment 携带）、Host/Origin/Sec-Fetch-Site 同源校验、严格 CSP、路径 jail（`--root` 白名单）、只读模式、空闲自动退出。
+- 口令内存保管（vault）：私钥口令只存进程内存，可一键锁定；任务对象/审计/日志永不包含口令。
+- 命令上下文（`result.py`）：CLI 与 GUI 共用同一套业务代码；GUI 通过结构化结果渲染，无需解析人类输出。
+- 审计事件新增 `source` 字段（`cli` / `gui`）。
+- `verify` / `status` / `_check_timestamp_only` 的失败原因结构化输出（`reasons`）；目录校验列表封顶 1000 条并标记 `truncated`。
+- 静态资源（HTML/CSS/JS）随 wheel 分发，无外链、无构建步骤。
+
+### Fixed
+
+- `verify` 文件模式未写审计日志的遗漏（现在所有 verify 路径都会审计）。
+
 ## 0.9.0
 
 ### Added

@@ -50,6 +50,7 @@ from .manifest import (
     parse_manifest,
     verify_entries,
 )
+from .result import CommandContext, activate, deactivate
 from .sbom import build_sbom
 from .tsa import (
     TimestampError,
@@ -68,6 +69,9 @@ def _exp(value: str | None) -> str:
 
 
 def _password(args: argparse.Namespace, *, required: bool = False) -> str | None:
+    ctx = getattr(args, "_ctx", None)
+    if ctx is not None and ctx.password is not None:
+        return ctx.password
     if getattr(args, "password_file", None):
         path = Path(_exp(args.password_file))
         if not path.is_file():
@@ -80,9 +84,7 @@ def _password(args: argparse.Namespace, *, required: bool = False) -> str | None
     if env:
         return env
     if required:
-        die(
-            "私钥已加密：请用 --password-file 或环境变量 HASHSEAL_KEY_PASSWORD 提供口令"
-        )
+        die("私钥已加密：请用 --password-file 或环境变量 HASHSEAL_KEY_PASSWORD 提供口令")
     return None
 
 
@@ -93,7 +95,9 @@ def _cfg(args: argparse.Namespace, key: str, default=None):
 
 def _tsa_list(args: argparse.Namespace) -> list[str]:
     explicit = getattr(args, "tsa", None) or os.environ.get("HASHSEAL_TSA") or _cfg(args, "tsa")
-    tsa_ca = getattr(args, "tsa_ca", None) or os.environ.get("HASHSEAL_TSA_CA") or _cfg(args, "tsa_ca")
+    tsa_ca = (
+        getattr(args, "tsa_ca", None) or os.environ.get("HASHSEAL_TSA_CA") or _cfg(args, "tsa_ca")
+    )
 
     if explicit:
         values = explicit if isinstance(explicit, (list, tuple)) else str(explicit).split(",")
@@ -102,9 +106,7 @@ def _tsa_list(args: argparse.Namespace) -> list[str]:
         endpoints = [DEFAULT_TSA, *DEFAULT_TSA_FALLBACKS]
 
     # 逗号分隔多个地址 = 用户精确指定的列表，不追加
-    precise = isinstance(explicit, (list, tuple)) or (
-        isinstance(explicit, str) and "," in explicit
-    )
+    precise = isinstance(explicit, (list, tuple)) or (isinstance(explicit, str) and "," in explicit)
     if precise:
         return endpoints
 
@@ -165,16 +167,44 @@ def _excludes(args: argparse.Namespace) -> tuple[str, ...]:
 
 def _audit(args: argparse.Namespace, event: str, **fields: object) -> None:
     # 审计日志是强制项：不再提供关闭开关
-    write_event(event, config=dict(getattr(args, "_config", None) or {}), **fields)
+    write_event(
+        event,
+        config=dict(getattr(args, "_config", None) or {}),
+        source=getattr(args, "_source", "cli"),
+        **fields,
+    )
+
+
+def _set_result(args: argparse.Namespace, payload: dict[str, object]) -> None:
+    """把结构化结果写给调用方（GUI）；CLI 默认不收集，零开销。"""
+    ctx = getattr(args, "_ctx", None)
+    if ctx is not None:
+        ctx.set_result(payload)
+
+
+def _cancelled(args: argparse.Namespace) -> bool:
+    ctx = getattr(args, "_ctx", None)
+    return bool(ctx is not None and ctx.cancelled())
+
+
+def _progress(args: argparse.Namespace, stage: str, done: int, total: int) -> None:
+    ctx = getattr(args, "_ctx", None)
+    if ctx is not None:
+        ctx.set_progress(stage, done, total)
 
 
 def _signing_key(args: argparse.Namespace):
     path = _key_path(args)
     password = _password(args)
-    if password is None and is_encrypted_key(path) and sys.stdin.isatty():
-        import getpass
+    ctx = getattr(args, "_ctx", None)
+    interactive = ctx is None or ctx.interactive
+    if password is None and is_encrypted_key(path):
+        if not interactive:
+            die("私钥已加密，需要口令。请在界面输入私钥口令后重试")
+        if sys.stdin.isatty():
+            import getpass
 
-        password = getpass.getpass("私钥口令: ")
+            password = getpass.getpass("私钥口令: ")
     return load_private(path, password)
 
 
@@ -237,6 +267,15 @@ def cmd_keygen(args: argparse.Namespace) -> int:
     print(f"公钥: {pub_path}  (可公开分发)")
     fingerprint = public_fingerprint(key.public_key())
     print(f"指纹: {fingerprint}")
+    _set_result(
+        args,
+        {
+            "private": str(priv_path),
+            "public": str(pub_path),
+            "fingerprint": fingerprint,
+            "encrypted": bool(password),
+        },
+    )
     _audit(
         args,
         "keygen",
@@ -256,6 +295,7 @@ def cmd_fingerprint(args: argparse.Namespace) -> int:
     target = Path(raw) if raw else _pub_path(args)
     fingerprint = public_fingerprint(load_public(target))
     print(fingerprint)
+    _set_result(args, {"key": str(target), "fingerprint": fingerprint})
     _audit(args, "fingerprint", path=str(target), fingerprint=fingerprint, ok=True)
     return 0
 
@@ -263,12 +303,12 @@ def cmd_fingerprint(args: argparse.Namespace) -> int:
 def cmd_hash(args: argparse.Namespace) -> int:
     rc = 0
     total = 0
+    entries: list[dict[str, object]] = []
+    cancelled = False
     for name in args.files:
         p = Path(_exp(name))
         if p.is_dir():
-            targets = iter_files(
-                [name], excludes=_excludes(args), follow_symlinks=_follow(args)
-            )
+            targets = iter_files([name], excludes=_excludes(args), follow_symlinks=_follow(args))
             if not targets:
                 warn(f"跳过（目录里没有可哈希的文件）: {p}")
                 rc = 2
@@ -280,12 +320,20 @@ def cmd_hash(args: argparse.Namespace) -> int:
             rc = 2
             continue
         for target in targets:
+            if _cancelled(args):
+                cancelled = True
+                warn("已取消，剩余文件未处理")
+                break
             digest, size = sha256_file(target)
+            entries.append({"path": str(target), "digest": digest, "size": size})
             total += 1
             display = str(target).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
             print(f"{digest}  {display}")
             if args.verbose:
                 warn(f"{target}: {size} 字节")
+        if cancelled:
+            break
+    _set_result(args, {"files": entries, "count": total, "cancelled": cancelled})
     _audit(args, "hash", paths=list(args.files), files=total, ok=(rc == 0))
     return rc
 
@@ -307,6 +355,9 @@ def cmd_manifest(args: argparse.Namespace) -> int:
     except ManifestError as exc:
         _audit(args, "manifest", path=str(out_path), ok=False, error=str(exc))
         die(str(exc))
+    _set_result(
+        args, {"manifest": str(out_path), "count": count, "base": str(base) if base else None}
+    )
     print(f"已写入 {out_path}（{count} 个文件）")
     _audit(args, "manifest", path=str(out_path), files=count, ok=True)
     print(f"下一步：hashseal sign {out_path}   然后 hashseal verify {out_path}")
@@ -345,13 +396,28 @@ def cmd_sign(args: argparse.Namespace) -> int:
     _materialize_manifests(args, dir_roots)
 
     rc = 0
-    for p in targets:
+    items: list[dict[str, object]] = []
+    cancelled = False
+    for index, p in enumerate(targets):
+        if _cancelled(args):
+            cancelled = True
+            warn("已取消，剩余目标未处理")
+            break
+        _progress(args, "签名", index, len(targets))
         record = build_record(key, p, signer=args.signer, signed_name=args.name)
         sig_path = Path(_exp(args.sig)) if args.sig else sig_path_for(p)
         atomic_write_text(
             sig_path,
             json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         )
+        item: dict[str, object] = {
+            "path": str(p),
+            "sig": str(sig_path),
+            "digest": record["digest"],
+            "size": record["size"],
+            "format": record["format"],
+        }
+        items.append(item)
         print(f"已签名 {p}")
         print(f"  签名文件: {sig_path}")
         print(f"  SHA-256 : {record['digest']}")
@@ -385,11 +451,19 @@ def cmd_sign(args: argparse.Namespace) -> int:
                 _audit(args, "timestamp", path=str(sig_path), ok=False, error=str(exc))
                 rc = 1
                 continue
+            item["timestamp"] = {
+                "tsr": str(tsr_path),
+                "gen_time": info["gen_time"],
+                "tsa": info["tsa"],
+                "chain": info["chain"],
+                "ca": info.get("ca"),
+            }
             print(f"  时间戳  : {tsr_path}")
             print(
                 f"            {fmt_time(info['gen_time'])} 由 TSA「{info['tsa']}」见证"
                 f"（证书链: {info['chain']}）"
             )
+    _set_result(args, {"items": items, "cancelled": cancelled})
     return rc
 
 
@@ -404,6 +478,26 @@ def _print_file_result(result: dict, pubkey_fp: str) -> None:
         f"本地时间={fmt_time(expected['created'])}"
     )
     print(f"公钥指纹  : {pubkey_fp}")
+
+
+def _verify_failures(result: dict) -> list[str]:
+    """把验证失败原因整理成结构化列表（GUI 展示用）。"""
+    expected = result.get("expected") or {}
+    reasons: list[str] = []
+    if not result.get("ok"):
+        if expected.get("size") != result.get("size"):
+            reasons.append(f"大小不同：签名记录 {expected.get('size')}，实际 {result.get('size')}")
+        if expected.get("digest") != result.get("digest"):
+            reasons.append(
+                f"SHA-256 不同：签名记录 {expected.get('digest')}，实际 {result.get('digest')}"
+            )
+        if expected.get("name") != result.get("name"):
+            reasons.append(
+                f"名称不同：签名记录 {expected.get('name')}，实际按 {result.get('name')} 校验"
+            )
+    if result.get("metadata_mismatch"):
+        reasons.append("签名文件中的摘要/大小字段与实物不符（元数据可能被改过）")
+    return reasons
 
 
 def _verify_file(
@@ -423,7 +517,9 @@ def _verify_file(
             tsr_path = Path(_exp(args.tsr))
             if not tsr_path.is_file():
                 raise TimestampError(f"找不到时间戳令牌: {tsr_path}")
-            ca_pem, ca_label, strict = resolve_ca(_tsa_ca(args), allow_unverified=args.allow_unverified_chain)
+            ca_pem, ca_label, strict = resolve_ca(
+                _tsa_ca(args), allow_unverified=args.allow_unverified_chain
+            )
             ts_info = check_token(
                 tsr_path.read_bytes(),
                 hashlib.sha256(sig_path.read_bytes()).digest(),
@@ -459,13 +555,11 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
             if not auto.is_file():
                 die(f"找不到时间戳令牌 {auto}")
             tsr = str(auto)
-        return _check_timestamp_only(target, tsr, _tsa_ca(args), args.json)
+        return _check_timestamp_only(args, target, tsr, _tsa_ca(args), args.json)
 
     pub = load_public(_pub_path(args))
     fp = public_fingerprint(pub)
-    if args.expect_fingerprint and not fingerprint_matches(
-        args.expect_fingerprint, pub
-    ):
+    if args.expect_fingerprint and not fingerprint_matches(args.expect_fingerprint, pub):
         print(f"公钥指纹  : {fp}")
         print("结果      : ❌ 公钥指纹与 --expect-fingerprint 不一致")
         return 1
@@ -497,34 +591,51 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
             follow_symlinks=_follow(args),
         )
     ok = result["ok"] and not bad and not extras and info["ts_error"] is None
-    _audit(args, "verify", path=str(root), ok=ok, signature_ok=result["ok"], timestamp_ok=bool(info["ts_info"]))
+    _audit(
+        args,
+        "verify",
+        path=str(root),
+        ok=ok,
+        signature_ok=result["ok"],
+        timestamp_ok=bool(info["ts_info"]),
+    )
+
+    failed = bad[:1000]
+    unlisted_capped = extras[:1000]
+    payload = {
+        "target": str(root),
+        "kind": "dir",
+        "ok": ok,
+        "manifest": {
+            "target": str(manifest),
+            "ok": result["ok"],
+            "digest": result["digest"],
+            "expected": result["expected"],
+        },
+        "signer_fingerprint": fp,
+        "timestamp": info["ts_info"]
+        or ({"ok": False, "error": info["ts_error"]} if args.tsr else None),
+        "files": {
+            "checked": len(entries),
+            "ok": len(good),
+            "failed": failed,
+            "unlisted": unlisted_capped,
+            "failed_truncated": len(bad) > len(failed),
+            "unlisted_truncated": len(extras) > len(unlisted_capped),
+            "skipped": skipped[:500],
+        },
+        "signature_valid": result["ok"],
+        "signer_signed": result["signer_signed"],
+        "metadata_valid": not result.get("metadata_mismatch", False),
+        "digest": result["digest"],
+        "size": result["size"],
+        "name": result["name"],
+        "expected": result["expected"],
+    }
+    _set_result(args, payload)
 
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "file": str(root),
-                    "ok": ok,
-                    "manifest": {
-                        "file": str(manifest),
-                        "ok": result["ok"],
-                        "digest": result["digest"],
-                        "expected": result["expected"],
-                    },
-                    "signer_fingerprint": fp,
-                    "timestamp": info["ts_info"]
-                    or ({"ok": False, "error": info["ts_error"]} if args.tsr else None),
-                    "files": {
-                        "checked": len(entries),
-                        "ok": len(good),
-                        "failed": bad,
-                        "unlisted": extras,
-                    },
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if ok else 1
 
     print(f"目录      : {root}")
@@ -559,7 +670,7 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
 
 
 def _check_timestamp_only(
-    target: Path, tsr: str | None, tsa_ca: str | None, as_json: bool
+    args: argparse.Namespace, target: Path, tsr: str | None, tsa_ca: str | None, as_json: bool
 ) -> int:
     if tsr is None:
         die("请用 --tsr 指定时间戳令牌")
@@ -578,6 +689,17 @@ def _check_timestamp_only(
             chain_required=strict,
         )
     except TimestampError as exc:
+        _set_result(
+            args,
+            {
+                "target": str(target),
+                "kind": "ts-only",
+                "token": str(token_path),
+                "size": size,
+                "ok": False,
+                "error": str(exc),
+            },
+        )
         if as_json:
             print(
                 json.dumps(
@@ -597,6 +719,17 @@ def _check_timestamp_only(
             print(f"结果    : ❌ {exc}")
         return 1
 
+    _set_result(
+        args,
+        {
+            "target": str(target),
+            "kind": "ts-only",
+            "size": size,
+            "token": str(token_path),
+            "ok": True,
+            **info,
+        },
+    )
     if as_json:
         print(
             json.dumps(
@@ -628,7 +761,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if args.ts_only:
         if not p.is_file():
             die(f"路径不存在: {p}")
-        return _check_timestamp_only(p, args.tsr, _tsa_ca(args), args.json)
+        return _check_timestamp_only(args, p, args.tsr, _tsa_ca(args), args.json)
     if not p.is_file():
         die(f"文件不存在或不是普通文件: {p}")
 
@@ -637,9 +770,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         die(f"找不到签名文件 {sig_path}")
     pub = load_public(_pub_path(args))
     fp = public_fingerprint(pub)
-    if args.expect_fingerprint and not fingerprint_matches(
-        args.expect_fingerprint, pub
-    ):
+    if args.expect_fingerprint and not fingerprint_matches(args.expect_fingerprint, pub):
         print(f"公钥指纹  : {fp}")
         print("结果      : ❌ 公钥指纹与 --expect-fingerprint 不一致")
         return 1
@@ -648,30 +779,32 @@ def cmd_verify(args: argparse.Namespace) -> int:
     result, ts_info, ts_error = info["result"], info["ts_info"], info["ts_error"]
     ok = result["ok"] and ts_error is None
 
+    _audit(
+        args,
+        "verify",
+        path=str(p),
+        ok=ok,
+        signature_ok=result["ok"],
+        timestamp_ok=(ts_info is not None if args.tsr else None),
+    )
+    payload = {
+        "target": str(p),
+        "kind": "file",
+        "ok": ok,
+        "signature_valid": result["ok"],
+        "signer_signed": result["signer_signed"],
+        "metadata_valid": not result.get("metadata_mismatch", False),
+        "digest": result["digest"],
+        "size": result["size"],
+        "name": result["name"],
+        "expected": result["expected"],
+        "signer_fingerprint": fp,
+        "timestamp": (ts_info or {"ok": False, "error": ts_error}) if args.tsr else None,
+        "reasons": _verify_failures(result),
+    }
+    _set_result(args, payload)
+
     if args.json:
-        _audit(
-            args,
-            "verify",
-            path=str(p),
-            ok=ok,
-            signature_ok=result["ok"],
-            timestamp_ok=(ts_info is not None if args.tsr else None),
-        )
-        payload = {
-            "file": str(p),
-            "ok": ok,
-            "signature_valid": result["ok"],
-            "signer_signed": result["signer_signed"],
-            "metadata_valid": not result.get("metadata_mismatch", False),
-            "digest": result["digest"],
-            "size": result["size"],
-            "name": result["name"],
-            "expected": result["expected"],
-            "signer_fingerprint": fp,
-            "timestamp": (ts_info or {"ok": False, "error": ts_error})
-            if args.tsr
-            else None,
-        }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if ok else 1
 
@@ -699,13 +832,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if expected["size"] != result["size"]:
         print(f"  - 大小不同：签名记录 {expected['size']}，实际 {result['size']}")
     if expected["digest"] != result["digest"]:
-        print(
-            f"  - SHA-256 不同：签名记录 {expected['digest']}，实际 {result['digest']}"
-        )
+        print(f"  - SHA-256 不同：签名记录 {expected['digest']}，实际 {result['digest']}")
     if expected["name"] != result["name"]:
-        print(
-            f"  - 名称不同：签名记录 {expected['name']}，实际按 {result['name']} 校验"
-        )
+        print(f"  - 名称不同：签名记录 {expected['name']}，实际按 {result['name']} 校验")
     if (
         expected["digest"] == result["digest"]
         and expected["size"] == result["size"]
@@ -713,9 +842,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     ):
         print("  → 内容一致，只是文件名不同。若确属改名，加 --name", expected["name"])
     elif expected["digest"] == result["digest"] and expected["size"] == result["size"]:
-        print(
-            "  → 内容一致但签名不成立：可能是签名文件被替换，或公钥不是签名者本人的。"
-        )
+        print("  → 内容一致但签名不成立：可能是签名文件被替换，或公钥不是签名者本人的。")
     else:
         print("  → 文件内容已被修改，或拿到的不是签名时的那一份。")
     print("  → 也可能只是公钥不对：请用可信渠道核对上面的公钥指纹。")
@@ -747,6 +874,9 @@ def cmd_timestamp(args: argparse.Namespace) -> int:
     except TimestampError as exc:
         die(f"获取时间戳失败: {exc}")
 
+    payload = {"target": str(p), "kind": "timestamp", "size": size, "token": str(out), **info}
+    _set_result(args, payload)
+
     if args.json:
         print(
             json.dumps(
@@ -761,10 +891,24 @@ def cmd_timestamp(args: argparse.Namespace) -> int:
         print(f"  SHA-256 : {digest_hex}")
         _print_token_info(info)
     print()
-    print(
-        "提示：把 .tsr 与文件/签名一起分发；验证用 verify --tsr（仅验时间戳加 --ts-only）。"
-    )
+    print("提示：把 .tsr 与文件/签名一起分发；验证用 verify --tsr（仅验时间戳加 --ts-only）。")
     return 0
+
+
+def cmd_gui(args: argparse.Namespace) -> int:
+    """启动本地 Web GUI；阻塞直到用户退出或闲置超时。"""
+    from .gui.server import GuiSettings, serve
+
+    settings = GuiSettings(
+        port=int(args.port or 0),
+        open_browser=not args.no_browser,
+        roots=[Path(_exp(p)) for p in (args.root or [])],
+        read_only=bool(args.read_only),
+        idle_timeout_minutes=float(args.idle_timeout or 0),
+        vault_timeout_minutes=float(args.vault_timeout or 0),
+        config=dict(getattr(args, "_config", None) or {}),
+    )
+    return serve(settings)
 
 
 def cmd_ots(args: argparse.Namespace) -> int:
@@ -774,6 +918,7 @@ def cmd_ots(args: argparse.Namespace) -> int:
     if not args.ots_args:
         die("用法：hashseal ots stamp|verify|upgrade FILE ...")
     rc = subprocess.run([exe, *args.ots_args], check=False).returncode
+    _set_result(args, {"argv": [exe, *args.ots_args], "rc": rc, "ok": rc == 0})
     _audit(args, "ots", ots_args=list(args.ots_args), ok=(rc == 0))
     return rc
 
@@ -786,6 +931,15 @@ def cmd_diff(args: argparse.Namespace) -> int:
         die(str(exc))
     result = diff_manifests(left, right)
     changed = bool(result["added"] or result["removed"] or result["changed"])
+    _set_result(
+        args,
+        {
+            "left": str(args.left),
+            "right": str(args.right),
+            "ok": not changed,
+            **result,
+        },
+    )
     _audit(
         args,
         "diff",
@@ -821,6 +975,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         except TimestampError as exc:
             die(str(exc))
         _audit(args, "inspect", path=str(p), kind="tsr", ok=True)
+        _set_result(args, {"kind": "tsr", "token": str(p), **meta})
         if args.json:
             print(json.dumps(meta, ensure_ascii=False, indent=2))
         else:
@@ -840,6 +995,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
 
     record = parse_record(p)
     _audit(args, "inspect", path=str(p), kind="sig", ok=True)
+    _set_result(args, {"kind": "sig", "token": str(p), **record})
     if args.json:
         print(json.dumps(record, ensure_ascii=False, indent=2))
     else:
@@ -877,19 +1033,48 @@ def cmd_status(args: argparse.Namespace) -> int:
         _unused_skipped: list[str] = []
         if not args.allow_unlisted:
             extras, _unused_skipped = find_unlisted(
-            p, {rel for _, rel in entries}, excludes=_excludes(args), follow_symlinks=_follow(args)
-        )
+                p,
+                {rel for _, rel in entries},
+                excludes=_excludes(args),
+                follow_symlinks=_follow(args),
+            )
         ok = result["ok"] and not bad and not extras
+        _set_result(
+            args,
+            {
+                "target": str(p),
+                "kind": "dir",
+                "ok": ok,
+                "signature_ok": result["ok"],
+                "checked": len(entries),
+                "good": len(good),
+                "failed": bad[:1000],
+                "unlisted": extras[:1000],
+                "skipped": _unused_skipped[:500],
+            },
+        )
         if args.json:
-            print(json.dumps({
-                "path": str(p), "ok": ok, "signature_ok": result["ok"],
-                "checked": len(entries), "failed": bad, "unlisted": extras,
-            }, ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "path": str(p),
+                        "ok": ok,
+                        "signature_ok": result["ok"],
+                        "checked": len(entries),
+                        "failed": bad,
+                        "unlisted": extras,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
         else:
             mark = "✅" if ok else "❌"
-            print(f"{mark} {p}: 清单签名{'有效' if result['ok'] else '无效'}，"
-                  f"{len(good)}/{len(entries)} 个文件一致"
-                  + (f"，{len(extras)} 个未列入清单" if extras else ""))
+            print(
+                f"{mark} {p}: 清单签名{'有效' if result['ok'] else '无效'}，"
+                f"{len(good)}/{len(entries)} 个文件一致"
+                + (f"，{len(extras)} 个未列入清单" if extras else "")
+            )
         _audit(args, "status", path=str(p), ok=ok)
         if args.json:
             print(json.dumps({"skipped": _unused_skipped}, ensure_ascii=False))
@@ -902,8 +1087,11 @@ def cmd_status(args: argparse.Namespace) -> int:
         die(f"找不到签名文件 {sig}")
     pub = load_public(_pub_path(args))
     result = verify_record(parse_record(sig), p, pub)
+    _set_result(args, {"target": str(p), "kind": "file", "ok": result["ok"], **result})
     if args.json:
-        print(json.dumps({"path": str(p), "ok": result["ok"], **result}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps({"path": str(p), "ok": result["ok"], **result}, ensure_ascii=False, indent=2)
+        )
     else:
         print(f"{'✅' if result['ok'] else '❌'} {p}: 签名{'有效' if result['ok'] else '无效'}")
     _audit(args, "status", path=str(p), ok=result["ok"])
@@ -934,6 +1122,7 @@ def cmd_renew(args: argparse.Namespace) -> int:
     except TimestampError as exc:
         _audit(args, "renew", path=str(target), ok=False, error=str(exc))
         die(f"续期失败: {exc}")
+    _set_result(args, {"target": str(target), "kind": "renew", "token": str(out), **info})
     print(f"已续期 {target}")
     print(f"  令牌文件: {out}")
     print(f"  {fmt_time(info['gen_time'])} 由 TSA「{info['tsa']}」见证")
@@ -956,6 +1145,7 @@ def cmd_bundle(args: argparse.Namespace) -> int:
         )
     except BundleError as exc:
         die(str(exc))
+    _set_result(args, {"bundle": str(out), **meta})
     print(f"已打包 {root} -> {out}")
     print(f"  创建时间: {fmt_time(meta['created'])}")
     print(f"  文件数: {meta['files']}")
@@ -977,6 +1167,16 @@ def cmd_unpack(args: argparse.Namespace) -> int:
     print(f"  指纹  : {meta.get('fingerprint')}")
 
     if args.no_verify:
+        _set_result(
+            args,
+            {
+                "bundle": str(bundle),
+                "dest": str(dest),
+                "verified": False,
+                "ok": True,
+                **meta,
+            },
+        )
         _audit(args, "unpack", path=str(dest), ok=True, verified=False)
         return 0
     included_pub = dest / "hashseal-public.pem"
@@ -992,13 +1192,30 @@ def cmd_unpack(args: argparse.Namespace) -> int:
             )
     if not pub:
         pub = _pub_path(args)
-    verify_args = build_parser().parse_args([
-        "verify", str(dest), "-p", str(pub),
-        "--exclude", "hashseal-bundle.json",
-        "--exclude", "hashseal-public.pem",
-    ])
+    verify_args = build_parser().parse_args(
+        [
+            "verify",
+            str(dest),
+            "-p",
+            str(pub),
+            "--exclude",
+            "hashseal-bundle.json",
+            "--exclude",
+            "hashseal-public.pem",
+        ]
+    )
     verify_args._config = getattr(args, "_config", {})
     rc = cmd_verify(verify_args)
+    _set_result(
+        args,
+        {
+            "bundle": str(bundle),
+            "dest": str(dest),
+            "verified": True,
+            "ok": rc == 0,
+            **meta,
+        },
+    )
     _audit(args, "unpack", path=str(dest), ok=(rc == 0), verified=True)
     return rc
 
@@ -1013,6 +1230,16 @@ def cmd_attest(args: argparse.Namespace) -> int:
     envelope = sign_statement(statement, key)
     out = Path(_exp(args.output))
     atomic_write_text(out, json.dumps(envelope, ensure_ascii=False, indent=2) + "\n")
+    _set_result(
+        args,
+        {
+            "output": str(out),
+            "subjects": len(statement["subject"]),
+            "keyid": envelope["signatures"][0]["keyid"],
+            "predicate_type": statement["predicateType"],
+            "ok": True,
+        },
+    )
     print(f"已生成证明 {out}")
     print(f"  subjects: {len(statement['subject'])}")
     print(f"  keyid   : {envelope['signatures'][0]['keyid']}")
@@ -1032,8 +1259,15 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
     try:
         statement = verify_envelope(envelope, pub)
     except AttestError as exc:
+        _set_result(args, {"target": str(path), "kind": "attest", "ok": False, "error": str(exc)})
         if args.json:
-            print(json.dumps({"file": str(path), "ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    {"file": str(path), "ok": False, "error": str(exc)},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
         else:
             print(f"结果    : ❌ {exc}")
         return 1
@@ -1044,6 +1278,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         "predicateType": statement.get("predicateType"),
         "keyid": envelope["signatures"][0].get("keyid"),
     }
+    _set_result(args, {**summary, "kind": "attest"})
     if args.json:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     else:
@@ -1099,6 +1334,7 @@ def cmd_config_init(args: argparse.Namespace) -> int:
         die(f"{path} 已存在（覆盖加 --force）")
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, TOML_TEMPLATE)
+    _set_result(args, {"path": str(path), "created": True})
     print(f"已生成配置文件 {path}")
     print("编辑后运行 hashseal config 查看生效配置。")
     return 0
@@ -1107,17 +1343,29 @@ def cmd_config_init(args: argparse.Namespace) -> int:
 def cmd_config(args: argparse.Namespace) -> int:
     path = config_path()
     cfg = load_config()
+    _set_result(args, {"path": str(path), "exists": path.is_file(), "config": cfg})
     if args.json:
-        print(json.dumps(
-            {"path": str(path), "exists": path.is_file(), "config": cfg},
-            ensure_ascii=False, indent=2,
-        ))
+        print(
+            json.dumps(
+                {"path": str(path), "exists": path.is_file(), "config": cfg},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         print(f"配置路径: {path}" + ("" if path.is_file() else "（不存在，使用默认值）"))
         for key in (
-            "tsa", "tsa_ca", "key", "pubkey", "exclude", "follow_symlinks",
-            "audit_sink", "audit_file", "audit_max_bytes",
-            "audit_retention_days", "audit_facility",
+            "tsa",
+            "tsa_ca",
+            "key",
+            "pubkey",
+            "exclude",
+            "follow_symlinks",
+            "audit_sink",
+            "audit_file",
+            "audit_max_bytes",
+            "audit_retention_days",
+            "audit_facility",
         ):
             if key in cfg:
                 print(f"  {key} = {cfg[key]}")
@@ -1127,6 +1375,7 @@ def cmd_config(args: argparse.Namespace) -> int:
 def cmd_audit(args: argparse.Namespace) -> int:
     path = audit_path()
     lines = read_events(path, args.lines)
+    _set_result(args, {"path": str(path), "lines": lines})
     if not lines:
         print("(暂无审计日志)")
         return 0
@@ -1159,6 +1408,15 @@ def cmd_sbom(args: argparse.Namespace) -> int:
         die(str(exc))
     out = Path(_exp(args.output))
     atomic_write_text(out, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    _set_result(
+        args,
+        {
+            "output": str(out),
+            "components": len(data["components"]),
+            "generated_at": data["metadata"]["timestamp"],
+            "ok": True,
+        },
+    )
     print(f"已生成 SBOM {out}（{len(data['components'])} 个组件）")
     print(f"生成时间  : {fmt_time(data['metadata']['timestamp'])}")
     print(f"下一步：hashseal sign {out}")
@@ -1171,14 +1429,16 @@ def build_parser() -> argparse.ArgumentParser:
         prog="hashseal",
         description="SHA-256 + Ed25519 文件一致性 / 来源校验工具",
     )
-    ap.add_argument(
-        "-V", "--version", action="version", version=f"%(prog)s {__version__}"
-    )
+    ap.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     kg = sub.add_parser("keygen", help="生成密钥对（只做一次）")
-    kg.add_argument("--private", default=None, help="私钥输出路径（默认读配置或 hashseal_private.pem）")
-    kg.add_argument("--public", default=None, help="公钥输出路径（默认读配置或 hashseal_public.pem）")
+    kg.add_argument(
+        "--private", default=None, help="私钥输出路径（默认读配置或 hashseal_private.pem）"
+    )
+    kg.add_argument(
+        "--public", default=None, help="公钥输出路径（默认读配置或 hashseal_public.pem）"
+    )
     kg.add_argument("--password-file", help="私钥口令文件（写入后私钥加密）")
     kg.add_argument("--force", action="store_true")
     kg.set_defaults(func=cmd_keygen)
@@ -1211,13 +1471,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     sg = sub.add_parser("sign", help="为文件/目录生成 .sig 分离签名")
     sg.add_argument("files", nargs="+", help="文件或目录")
-    sg.add_argument("-k", "--key", default=None, help="私钥路径（默认读配置或 hashseal_private.pem）")
+    sg.add_argument(
+        "-k", "--key", default=None, help="私钥路径（默认读配置或 hashseal_private.pem）"
+    )
     sg.add_argument("--password-file", help="私钥口令文件")
     sg.add_argument("--sig", help="签名输出路径（单文件或单个目录）")
     sg.add_argument("--signer", default="", help="署名信息（v2 起纳入签名）")
     sg.add_argument("--name", help="签名时记录的文件名")
     sg.add_argument("--timestamp", action="store_true")
-    sg.add_argument("--tsa", default=None, help="TSA 地址，可逗号分隔；默认 DigiCert→Sectigo→freetsa")
+    sg.add_argument(
+        "--tsa", default=None, help="TSA 地址，可逗号分隔；默认 DigiCert→Sectigo→freetsa"
+    )
     sg.add_argument("--tsa-ca")
     sg.add_argument("--timeout", type=float, default=30.0)
     sg.add_argument("--retry", type=int, default=2, help="TSA 失败重试次数")
@@ -1226,15 +1490,22 @@ def build_parser() -> argparse.ArgumentParser:
     sg.add_argument("-j", "--jobs", type=int, default=None, help="并行哈希线程数")
     sg.add_argument("--follow-symlinks", action="store_true", default=None)
     sg.add_argument("--force", action="store_true")
-    sg.add_argument("--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝")
+    sg.add_argument(
+        "--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝"
+    )
     sg.set_defaults(func=cmd_sign)
 
     vf = sub.add_parser("verify", help="验证文件/目录与签名")
     vf.add_argument("file", help="文件或目录")
     vf.add_argument("--sig")
     vf.add_argument(
-        "-k", "--key", "-p", "--pubkey",
-        dest="pubkey", metavar="KEY", default=None,
+        "-k",
+        "--key",
+        "-p",
+        "--pubkey",
+        dest="pubkey",
+        metavar="KEY",
+        default=None,
         help="公钥 PEM（-p/--pubkey 为兼容别名）",
     )
     vf.add_argument("--name", help="文件被改名时指定原文件名")
@@ -1242,26 +1513,30 @@ def build_parser() -> argparse.ArgumentParser:
     vf.add_argument("--ts-only", action="store_true", help="只校验时间戳，不要求 .sig")
     vf.add_argument("--tsa-ca")
     vf.add_argument("--expect-fingerprint", help="要求公钥指纹匹配（如 SHA256:...）")
-    vf.add_argument(
-        "--allow-unlisted", action="store_true", help="允许目录中存在未列入清单的文件"
-    )
+    vf.add_argument("--allow-unlisted", action="store_true", help="允许目录中存在未列入清单的文件")
     vf.add_argument("--exclude", action="append", metavar="GLOB")
     vf.add_argument("--follow-symlinks", action="store_true", default=None)
     vf.add_argument("-j", "--jobs", type=int, default=None, help="并行校验线程数")
     vf.add_argument("--json", action="store_true")
-    vf.add_argument("--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝")
+    vf.add_argument(
+        "--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝"
+    )
     vf.set_defaults(func=cmd_verify)
 
     ts = sub.add_parser("timestamp", help="向 TSA 申请 RFC 3161 可信时间戳")
     ts.add_argument("file", help="文件或目录（目录会自动定位 MANIFEST）")
     ts.add_argument("-o", "--out")
-    ts.add_argument("--tsa", default=None, help="TSA 地址，可逗号分隔；默认 DigiCert→Sectigo→freetsa")
+    ts.add_argument(
+        "--tsa", default=None, help="TSA 地址，可逗号分隔；默认 DigiCert→Sectigo→freetsa"
+    )
     ts.add_argument("--tsa-ca")
     ts.add_argument("--timeout", type=float, default=30.0)
     ts.add_argument("--retry", type=int, default=2)
     ts.add_argument("--force", action="store_true")
     ts.add_argument("--json", action="store_true")
-    ts.add_argument("--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝")
+    ts.add_argument(
+        "--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝"
+    )
     ts.set_defaults(func=cmd_timestamp)
 
     d = sub.add_parser("diff", help="对比两份清单")
@@ -1278,8 +1553,16 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("status", help="快速检查签名（不请求 TSA）")
     st.add_argument("file", help="文件或目录")
     st.add_argument("--sig")
-    st.add_argument("-k", "--key", "-p", "--pubkey", dest="pubkey", metavar="KEY", default=None,
-                    help="公钥 PEM（-p/--pubkey 为兼容别名）")
+    st.add_argument(
+        "-k",
+        "--key",
+        "-p",
+        "--pubkey",
+        dest="pubkey",
+        metavar="KEY",
+        default=None,
+        help="公钥 PEM（-p/--pubkey 为兼容别名）",
+    )
     st.add_argument("--allow-unlisted", action="store_true")
     st.add_argument("--exclude", action="append", metavar="GLOB")
     st.add_argument("--follow-symlinks", action="store_true", default=None)
@@ -1289,34 +1572,59 @@ def build_parser() -> argparse.ArgumentParser:
 
     rn = sub.add_parser("renew", help="只续期时间戳，不重签")
     rn.add_argument("file", help=".sig、文件或目录")
-    rn.add_argument("--tsa", default=None, help="TSA 地址，可逗号分隔；默认 DigiCert→Sectigo→freetsa")
+    rn.add_argument(
+        "--tsa", default=None, help="TSA 地址，可逗号分隔；默认 DigiCert→Sectigo→freetsa"
+    )
     rn.add_argument("--tsa-ca")
     rn.add_argument("--timeout", type=float, default=30.0)
     rn.add_argument("--retry", type=int, default=2)
     rn.add_argument("--force", action="store_true")
-    rn.add_argument("--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝")
+    rn.add_argument(
+        "--allow-unverified-chain", action="store_true", help=" TSA 证书链校验失败时不拒绝"
+    )
     rn.set_defaults(func=cmd_renew)
 
     bd = sub.add_parser("bundle", help="把已签名目录打包为可分发 zip")
     bd.add_argument("dir")
     bd.add_argument("-o", "--output", required=True)
-    bd.add_argument("-k", "--key", "-p", "--pubkey", dest="pubkey", metavar="KEY", default=None,
-                    help="公钥 PEM（-p/--pubkey 为兼容别名）")
+    bd.add_argument(
+        "-k",
+        "--key",
+        "-p",
+        "--pubkey",
+        dest="pubkey",
+        metavar="KEY",
+        default=None,
+        help="公钥 PEM（-p/--pubkey 为兼容别名）",
+    )
     bd.add_argument("--allow-unlisted", action="store_true")
-    bd.add_argument("--compress", choices=["stored", "deflate"], default="stored",
-                    help="stored=最快（不压缩）；deflate=减小体积")
+    bd.add_argument(
+        "--compress",
+        choices=["stored", "deflate"],
+        default="stored",
+        help="stored=最快（不压缩）；deflate=减小体积",
+    )
     bd.add_argument("-j", "--jobs", type=int, default=None, help="并行校验线程数")
     bd.set_defaults(func=cmd_bundle)
 
     up = sub.add_parser("unpack", help="解包 bundle 并校验")
     up.add_argument("bundle")
     up.add_argument("-d", "--dest", required=True)
-    up.add_argument("-k", "--key", "-p", "--pubkey", dest="pubkey", metavar="KEY", default=None,
-                    help="公钥 PEM（-p/--pubkey 为兼容别名）")
+    up.add_argument(
+        "-k",
+        "--key",
+        "-p",
+        "--pubkey",
+        dest="pubkey",
+        metavar="KEY",
+        default=None,
+        help="公钥 PEM（-p/--pubkey 为兼容别名）",
+    )
     up.add_argument("--force", action="store_true")
     up.add_argument("--no-verify", action="store_true")
-    up.add_argument("--trust-embedded-key", action="store_true",
-                    help="接受 bundle 内置公钥（默认拒绝）")
+    up.add_argument(
+        "--trust-embedded-key", action="store_true", help="接受 bundle 内置公钥（默认拒绝）"
+    )
     up.set_defaults(func=cmd_unpack)
 
     cf = sub.add_parser("config", help="显示配置路径与生效配置")
@@ -1324,8 +1632,9 @@ def build_parser() -> argparse.ArgumentParser:
     cf.set_defaults(func=cmd_config)
 
     cinit = sub.add_parser("config-init", help="生成配置文件模板（TOML）")
-    cinit.add_argument("path", nargs="?", default=None,
-                       help="输出路径（默认 ~/.config/hashseal/config.toml）")
+    cinit.add_argument(
+        "path", nargs="?", default=None, help="输出路径（默认 ~/.config/hashseal/config.toml）"
+    )
     cinit.add_argument("--force", action="store_true")
     cinit.set_defaults(func=cmd_config_init)
 
@@ -1339,8 +1648,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     av = sub.add_parser("attest-verify", help="验证 in-toto DSSE 证明")
     av.add_argument("file")
-    av.add_argument("-k", "--key", "-p", "--pubkey", dest="pubkey", metavar="KEY", default=None,
-                    help="公钥 PEM（-p/--pubkey 为兼容别名）")
+    av.add_argument(
+        "-k",
+        "--key",
+        "-p",
+        "--pubkey",
+        dest="pubkey",
+        metavar="KEY",
+        default=None,
+        help="公钥 PEM（-p/--pubkey 为兼容别名）",
+    )
     av.add_argument("--json", action="store_true")
     av.set_defaults(func=cmd_attest_verify)
 
@@ -1360,13 +1677,47 @@ def build_parser() -> argparse.ArgumentParser:
     ot.add_argument("ots_args", nargs=argparse.REMAINDER)
     ot.set_defaults(func=cmd_ots)
 
+    g = sub.add_parser("gui", help="启动本地 Web 界面（仅绑定 127.0.0.1）")
+    g.add_argument("--port", type=int, default=0, help="端口（默认随机空闲端口）")
+    g.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    g.add_argument(
+        "--root",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="允许访问的根目录（可多次指定；默认为用户主目录 + 当前目录）",
+    )
+    g.add_argument("--read-only", action="store_true", help="只读模式：禁用签名/生成/解包等写操作")
+    g.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=30.0,
+        metavar="MINUTES",
+        help="闲置自动退出分钟数（0 = 不自动退出，默认 30）",
+    )
+    g.add_argument(
+        "--vault-timeout",
+        type=float,
+        default=0.0,
+        metavar="MINUTES",
+        help="口令闲置自动锁定分钟数（0 = 记住直到退出，默认 0）",
+    )
+    g.set_defaults(func=cmd_gui)
+
     return ap
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    args._config = load_config()
-    return args.func(args)
+def main(argv: list[str] | None = None, *, context: CommandContext | None = None) -> int:
+    ctx = context if context is not None else CommandContext()
+    tokens = activate(ctx)
+    try:
+        args = build_parser().parse_args(argv)
+        args._config = load_config()
+        args._source = ctx.source
+        args._ctx = ctx
+        return args.func(args)
+    finally:
+        deactivate(tokens)
 
 
 if __name__ == "__main__":
