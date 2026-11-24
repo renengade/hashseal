@@ -42,6 +42,9 @@ jobs:
       - name: 构建
         run: uv build
 
+      - name: 附带安装脚本（供 releases/latest/download 直链分发）
+        run: cp install.ps1 install.sh dist/
+
       - name: 生成 SHA256SUMS
         run: cd dist && sha256sum * > SHA256SUMS
 

@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 Windows（无 WSL）PowerShell 一键安装：
 
 ```powershell
-irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 | iex
 ```
 
 ## 60 秒上手

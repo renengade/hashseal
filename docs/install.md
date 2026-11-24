@@ -47,7 +47,7 @@ uv tool uninstall hashseal              # 卸载
 ## Windows（无 WSL，PowerShell 一键安装）
 
 ```powershell
-irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 | iex
 ```
 
 - 需要 PowerShell 5.1+（Windows 10/11 自带）与 `tar.exe`（Win10 1803+ 自带）；
@@ -55,7 +55,7 @@ irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
 - 锁定版本 / 校验哈希：
 
 ```powershell
-$env:HASHSEAL_REF = "v0.10.0"; $env:HASHSEAL_SHA256 = "<SHA256SUMS 中的值>"; irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+$env:HASHSEAL_REF = "v0.10.0"; $env:HASHSEAL_SHA256 = "<SHA256SUMS 中的值>"; irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 | iex
 ```
 
 - 升级：重新执行；卸载：`uv tool uninstall hashseal`；
