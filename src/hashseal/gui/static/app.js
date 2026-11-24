@@ -101,15 +101,18 @@ function route() {
   const main = document.getElementById("main");
   main.scrollTop = 0;
 
-  // 快速连续切换时可能同时存在多个页面：把当前存在的所有页全部离场，
-  // 避免任何一个页面残留导致内容叠加（错页）。
-  const leaving = [...main.querySelectorAll(":scope > .page")];
-  if (leaving.length) {
-    for (const node of leaving) {
-      node.classList.remove("stagger", "page-enter-forward", "page-enter-back");
-      node.classList.add("page-leave-" + dir);
-    }
-    setTimeout(() => leaving.forEach((n) => n.remove()), 460);
+  // 换页策略：旧页本体立即移除（保证 main 里永远只有一个真实 .page），
+  // 克隆一份做离场动画；幽灵在下次换页时同步清除 + 定时器兜底。
+  for (const ghost of main.querySelectorAll(":scope > .page-ghost")) {
+    ghost.remove();
+  }
+  const old = main.querySelector(":scope > .page");
+  if (old) {
+    const ghost = el("div", { class: "page-ghost page-leave-" + dir });
+    ghost.append(old.cloneNode(true)); // 冻结快照：不带事件、不接异步写入
+    old.remove();
+    main.append(ghost);
+    setTimeout(() => ghost.remove(), 460);
   }
   const page = el("div", { class: "page page-enter-" + dir + " stagger" });
   main.append(page);
@@ -198,7 +201,13 @@ async function pageDashboard(page) {
           el("td", {}, t.command),
           el("td", {}, el("span", { class: "badge " + (t.state === "succeeded" ? "ok" : t.state === "failed" ? "fail" : "info") }, t.state))))))));
     }
-  } catch { /* 忽略 */ }
+  } catch {
+    if (tasksCard.isConnected) {
+      tasksCard.textContent = "";
+      tasksCard.append(el("div", { class: "card-head" }, el("div", { class: "card-title" }, "最近操作")));
+      tasksCard.append(el("p", { class: "field-help" }, "加载失败，可刷新页面重试"));
+    }
+  }
 
   try {
     const { events } = await api.audit(6);
@@ -215,7 +224,13 @@ async function pageDashboard(page) {
           el("td", {}, String(r.event || "")),
           el("td", { class: "mono" }, shortPath(String(r.path || r.public || ""), 28))))))));
     }
-  } catch { /* 忽略 */ }
+  } catch {
+    if (auditCard.isConnected) {
+      auditCard.textContent = "";
+      auditCard.append(el("div", { class: "card-head" }, el("div", { class: "card-title" }, "审计日志（最近 6 条）")));
+      auditCard.append(el("p", { class: "field-help" }, "加载失败，可刷新页面重试"));
+    }
+  }
 
   content.append(el("div", { class: "card", style: "margin-top:18px" },
     el("div", { class: "card-title", style: "margin-bottom:10px" }, "安全提示"),

@@ -90,8 +90,8 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
   animation: page-in-back 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
   transform-origin: right center;
 }
-.page-leave-forward,
-.page-leave-back {
+/* 离场幽灵：旧页的冻结快照，绝对定位覆盖层，任何时刻真实 .page 只有一个 */
+.page-ghost {
   position: absolute;
   inset: 0;
   padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
@@ -100,11 +100,11 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
   pointer-events: none;
   z-index: 1;
 }
-.page-leave-forward {
+.page-ghost.page-leave-forward {
   animation: page-out-forward 0.36s ease both;
   transform-origin: left center;
 }
-.page-leave-back {
+.page-ghost.page-leave-back {
   animation: page-out-back 0.36s ease both;
   transform-origin: right center;
 }
