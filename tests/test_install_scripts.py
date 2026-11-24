@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parent.parent
 class InstallScriptTest(unittest.TestCase):
     def test_install_sh_syntax(self) -> None:
         sh = shutil.which("dash") or shutil.which("sh")
-        assert sh
+        if sh is None:
+            self.skipTest("本机无 POSIX sh（Windows），跳过 install.sh 语法检查")
         result = subprocess.run(
             [sh, "-n", str(ROOT / "install.sh")], check=False, capture_output=True
         )

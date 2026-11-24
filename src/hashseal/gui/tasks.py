@@ -17,7 +17,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .. import cli
-from ..audit import write_event
 from ..result import CommandContext
 
 MAX_OUTPUT_CHARS = 16_000
@@ -228,15 +227,7 @@ class TaskQueue:
             elif task.state == "failed" and task.error and "无法解密" in task.error:
                 self.vault.drop(task.remember_key)
 
-        # die() 发生在任何审计写入之前时，补一条失败审计
-        if task.state == "failed" and task.error and task.result is None:
-            write_event(
-                "gui_task_failed",
-                config=dict(self.config),
-                source="gui",
-                command=task.command,
-                error=task.error,
-            )
+        # 失败审计统一由 cli.main 的 command_failed 记录（含 CLI/GUI），此处不重复
 
     @staticmethod
     def _set_progress(task: Task, stage: str, done: int, total: int) -> None:

@@ -13,6 +13,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          # Windows 是官方安装路径（install.ps1），必须有测试覆盖
+          - os: windows-latest
+            python: "3.12"
+          - os: windows-latest
+            python: "3.13"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -23,3 +29,4 @@ jobs:
       - run: uv run ruff check .
       - run: uv run mypy src/hashseal --ignore-missing-imports --exclude ".*tsa\.py.*|.*sbom\.py.*"
       - run: uv run pytest -q
+

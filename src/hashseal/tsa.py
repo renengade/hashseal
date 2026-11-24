@@ -298,6 +298,18 @@ def _verify_cms_signature(
         raise TimestampError(f"时间戳签名算法处理失败: {exc}") from exc
 
 
+OPENSSL_MISSING_HINT = (
+    "无法校验 TSA 证书链：系统未安装 openssl。"
+    "请安装 OpenSSL（Windows 可用 winget install ShiningLight.OpenSSL.Light 或"
+    "使用 Git for Windows 自带的 openssl 加入 PATH）；"
+    "或显式加 --allow-unverified-chain 跳过链校验（会降低安全性）"
+)
+
+
+def openssl_available() -> bool:
+    return shutil.which("openssl") is not None
+
+
 def _openssl_chain(
     token_der: bytes,
     data_path: Path,
@@ -443,7 +455,11 @@ def check_token(
         if status == "ok":
             chain = "ok"
         elif chain_required:
+            if status.startswith("unavailable"):
+                raise TimestampError(OPENSSL_MISSING_HINT)
             raise TimestampError(f"TSA 证书链校验未通过: {status}")
+        elif status.startswith("unavailable"):
+            chain = "skipped（未安装 openssl，证书链未校验；建议安装后重试）"
         else:
             chain = f"skipped（{status}；用 --tsa-ca 指定信任根可强制校验）"
 

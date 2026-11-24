@@ -26,6 +26,9 @@ from .manifest import (
 
 BUNDLE_META = "hashseal-bundle.json"
 BUNDLE_FORMAT = "hashseal-bundle/1"
+# 解包防护（zip bomb）：默认上限，可在调用处覆盖
+MAX_UNPACK_BYTES = 8 * 1024**3   # 8 GiB
+MAX_UNPACK_ENTRIES = 100_000
 
 
 class BundleError(Exception):
@@ -120,7 +123,14 @@ def create_bundle(
     return meta
 
 
-def unpack_bundle(bundle_path: Path, dest: Path, *, force: bool = False) -> dict:
+def unpack_bundle(
+    bundle_path: Path,
+    dest: Path,
+    *,
+    force: bool = False,
+    max_bytes: int = MAX_UNPACK_BYTES,
+    max_entries: int = MAX_UNPACK_ENTRIES,
+) -> dict:
     if not bundle_path.is_file():
         raise BundleError(f"找不到 bundle: {bundle_path}")
     if dest.exists() and any(dest.iterdir()) and not force:
@@ -130,9 +140,19 @@ def unpack_bundle(bundle_path: Path, dest: Path, *, force: bool = False) -> dict
     root = dest.resolve()
     try:
         with zipfile.ZipFile(bundle_path) as zf:
+            infos = zf.infolist()
+            if len(infos) > max_entries:
+                raise BundleError(
+                    f"bundle 条目数超限：{len(infos)} > {max_entries}（疑似 zip bomb）"
+                )
+            total = sum(info.file_size for info in infos)
+            if total > max_bytes:
+                raise BundleError(
+                    f"bundle 解压后大小超限：{total} 字节 > {max_bytes}（疑似 zip bomb）"
+                )
             meta_raw = zf.read(BUNDLE_META)
             meta = json.loads(meta_raw.decode("utf-8"))
-            for info in zf.infolist():
+            for info in infos:
                 pure = _safe_name(info.filename)
                 mode = (info.external_attr >> 16) & 0o170000
                 if mode == 0o120000:

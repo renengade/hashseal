@@ -57,6 +57,7 @@ from .tsa import (
     _print_token_info,
     _stamp_file,
     check_token,
+    openssl_available,
     resolve_ca,
     token_metadata,
 )
@@ -171,6 +172,24 @@ def _audit(args: argparse.Namespace, event: str, **fields: object) -> None:
         config=dict(getattr(args, "_config", None) or {}),
         source=getattr(args, "_source", "cli"),
         **fields,
+    )
+    if fields.get("ok") is False:
+        ctx = getattr(args, "_ctx", None)
+        if ctx is not None:
+            ctx.audited_failure = True
+
+
+def _audit_failure(args: argparse.Namespace, ctx: CommandContext) -> None:
+    """命令异常退出且尚未写过失败审计时，补一条 command_failed。"""
+    if ctx.audited_failure or not ctx.error:
+        return
+    write_event(
+        "command_failed",
+        config=dict(getattr(args, "_config", None) or {}),
+        source=ctx.source,
+        command=getattr(args, "cmd", "") or "",
+        error=ctx.error,
+        exit_code=ctx.error_code,
     )
 
 
@@ -379,6 +398,11 @@ def cmd_sign(args: argparse.Namespace) -> int:
         die("--tsr 需要配合 --timestamp 使用")
     if _tsa_ca(args) and not args.timestamp:
         warn("--tsa-ca 只有配合 --timestamp 才有意义，已忽略")
+    if args.timestamp and not openssl_available() and not args.allow_unverified_chain:
+        warn(
+            "未找到 openssl：时间戳证书链将无法校验，时间戳步骤会失败。"
+            "请安装 OpenSSL，或加 --allow-unverified-chain（降低安全性）"
+        )
     if args.sig and Path(_exp(args.sig)).is_dir():
         die(f"--sig 指向的是目录，需要文件路径: {args.sig}")
 
@@ -1713,12 +1737,24 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None, *, context: CommandContext | None = None) -> int:
     ctx = context if context is not None else CommandContext()
     tokens = activate(ctx)
+    args: argparse.Namespace | None = None
     try:
         args = build_parser().parse_args(argv)
         args._config = load_config()
         args._source = ctx.source
         args._ctx = ctx
         return args.func(args)
+    except SystemExit as exc:
+        rc = int(exc.code or 0)
+        if rc != 0 and args is not None:
+            _audit_failure(args, ctx)
+        raise
+    except Exception as exc:
+        if ctx.error is None:
+            ctx.error = str(exc) or exc.__class__.__name__
+        if args is not None:
+            _audit_failure(args, ctx)
+        raise
     finally:
         deactivate(tokens)
 

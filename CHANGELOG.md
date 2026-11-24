@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.4
+
+### Added
+
+- Windows 纳入 CI 矩阵（3.12/3.13）：官方 Windows 安装路径从此有真实测试覆盖。
+
+### Fixed
+
+- bundle 解包防护：条目数（默认 10 万）与解压后总大小（默认 8 GiB）上限，拒绝 zip bomb。
+- 失败审计补全：所有命令（CLI 与 GUI）异常退出都会写入 `command_failed`
+  （含 command/error/exit_code），且不会与命令自身的失败审计重复。
+- 无 openssl 环境（典型为 Windows 原生安装）：TSA 证书链严格模式给出可执行的
+  安装指引（winget/Git for Windows），非严格模式明确标记「证书链未校验」；
+  `sign --timestamp` 提前警告。文档补充 Windows OpenSSL 说明。
+
 ## 0.10.3
 
 ### Added

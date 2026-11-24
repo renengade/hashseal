@@ -60,3 +60,13 @@ $env:HASHSEAL_REF = "v0.10.0"; $env:HASHSEAL_SHA256 = "<SHA256SUMS 中的值>"; 
 
 - 升级：重新执行；卸载：`uv tool uninstall hashseal`；
 - Windows 原生安装对 `D:\` 等本地盘的大文件哈希比 WSL `/mnt/*`（9P）快 4–5 倍。
+
+
+## Windows 与 TSA 证书链
+
+时间戳的证书链校验需要系统 `openssl`。Windows 默认不带，若未安装：
+
+- `sign --timestamp` 会在时间戳步骤给出明确错误（不会静默通过）；
+- 验证时间戳（`verify --tsr`）同样会失败并提示安装 OpenSSL；
+- 安装方式：`winget install ShiningLight.OpenSSL.Light`，或使用 Git for Windows 自带的 openssl 并加入 PATH；
+- 明确接受风险时可加 `--allow-unverified-chain`（会跳过链校验，审计仍记录）。

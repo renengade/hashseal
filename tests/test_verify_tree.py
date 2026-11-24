@@ -78,7 +78,10 @@ class VerifyTreeParityTest(unittest.TestCase):
         _manifest, entries = self._manifest()
         # a.txt 未列入清单；做软链接指向根外 → skipped（不跟随）
         (self.root / "d.txt").write_text("D\n", encoding="utf-8")
-        os.symlink(self.tmp / "outside.txt", self.root / "e.txt")
+        try:
+            os.symlink(self.tmp / "outside.txt", self.root / "e.txt")
+        except (OSError, NotImplementedError):
+            self.skipTest("本机不支持创建符号链接")
         (self.tmp / "outside.txt").write_text("OUT\n", encoding="utf-8")
         entries = entries + [("a" * 64, "d.txt"), ("b" * 64, "really_missing.txt")]
         tree = verify_tree(self.root, entries, follow_symlinks=False, jobs=1)

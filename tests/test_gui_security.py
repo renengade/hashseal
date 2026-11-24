@@ -150,7 +150,10 @@ class PathJailTest(GuiTestBase):
     def test_symlink_escape_not_navigable(self) -> None:
         import urllib.parse
 
-        (self.tmp / "link").symlink_to("/etc")
+        try:
+            (self.tmp / "link").symlink_to("/etc")
+        except (OSError, NotImplementedError):
+            self.skipTest("本机不支持创建符号链接")
         status, payload = self.request("/api/browse?path=" + urllib.parse.quote(str(self.tmp)))
         self.assertEqual(status, 200)
         entry = next(e for e in payload["entries"] if e["name"] == "link")

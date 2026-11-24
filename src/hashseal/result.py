@@ -31,6 +31,7 @@ class CommandContext:
     error_code: int = 2
     progress: ProgressFn | None = None
     cancel: threading.Event | None = None
+    audited_failure: bool = False  # 命令已自行写入失败审计（避免重复）
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
