@@ -20,9 +20,8 @@ from .core import (
 from .manifest import (
     ManifestError,
     find_manifest,
-    find_unlisted,
     parse_manifest,
-    verify_entries,
+    verify_tree,
 )
 
 BUNDLE_META = "hashseal-bundle.json"
@@ -62,13 +61,14 @@ def create_bundle(
 
     try:
         entries = parse_manifest(manifest)
-        _good, bad = verify_entries(root, entries, jobs=jobs)
+        tree = verify_tree(root, entries, jobs=jobs)
     except ManifestError as exc:
         raise BundleError(str(exc)) from exc
+    bad = tree["failed"]
     if bad:
         raise BundleError(f"清单校验失败：{len(bad)} 个文件不一致，拒绝打包")
 
-    extras, _skipped = find_unlisted(root, {rel for _, rel in entries})
+    extras = tree["unlisted"]
     if extras and not allow_unlisted:
         raise BundleError(
             f"目录中有未列入清单的文件（{len(extras)} 个），先用 --allow-unlisted 或重新签名"

@@ -2,9 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- `hashseal web` 子命令（= `gui` 别名）。
+- Windows PowerShell 一键安装（`install.ps1`，无需 WSL；行为与环境变量与 install.sh 一致）。
+
 ### Changed
 
 - `sha256_file` 读路径调优：unbuffered + `readinto` 复用 32 MiB 缓冲（NVMe 实测快约 10%）。
+- 目录校验改为 `verify_tree` 单次遍历（清单校验 + 未列入收集合并），只保留失败项与计数，
+  大目录内存占用从全量通过列表降为 KB 级；`verify_entries` / `find_unlisted` 保留为兼容 API。
 
 ## 0.10.0
 

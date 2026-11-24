@@ -45,10 +45,9 @@ from .manifest import (
     build_manifest,
     diff_manifests,
     find_manifest,
-    find_unlisted,
     iter_files,
     parse_manifest,
-    verify_entries,
+    verify_tree,
 )
 from .result import CommandContext, activate, deactivate
 from .sbom import build_sbom
@@ -578,18 +577,20 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
     result = info["result"]
     try:
         entries = parse_manifest(manifest)
-        good, bad = verify_entries(root, entries, jobs=_jobs(args))
-    except ManifestError as exc:
-        die(str(exc))
-    extras: list[str] = []
-    skipped: list[str] = []
-    if not args.allow_unlisted:
-        extras, skipped = find_unlisted(
+        tree = verify_tree(
             root,
-            {rel for _, rel in entries},
+            entries,
             excludes=_excludes(args),
             follow_symlinks=_follow(args),
+            jobs=_jobs(args),
+            check_unlisted=not args.allow_unlisted,
         )
+    except ManifestError as exc:
+        die(str(exc))
+    ok_count = tree["ok_count"]
+    bad = tree["failed"]
+    extras: list[str] = tree["unlisted"]
+    skipped: list[str] = tree["skipped"]
     ok = result["ok"] and not bad and not extras and info["ts_error"] is None
     _audit(
         args,
@@ -617,7 +618,7 @@ def _verify_dir(args: argparse.Namespace, root: Path) -> int:
         or ({"ok": False, "error": info["ts_error"]} if args.tsr else None),
         "files": {
             "checked": len(entries),
-            "ok": len(good),
+            "ok": ok_count,
             "failed": failed,
             "unlisted": unlisted_capped,
             "failed_truncated": len(bad) > len(failed),
@@ -1026,18 +1027,20 @@ def cmd_status(args: argparse.Namespace) -> int:
         result = verify_record(record, manifest, pub)
         try:
             entries = parse_manifest(manifest)
-            good, bad = verify_entries(p, entries, jobs=_jobs(args))
-        except ManifestError as exc:
-            die(str(exc))
-        extras: list[str] = []
-        _unused_skipped: list[str] = []
-        if not args.allow_unlisted:
-            extras, _unused_skipped = find_unlisted(
+            tree = verify_tree(
                 p,
-                {rel for _, rel in entries},
+                entries,
                 excludes=_excludes(args),
                 follow_symlinks=_follow(args),
+                jobs=_jobs(args),
+                check_unlisted=not args.allow_unlisted,
             )
+        except ManifestError as exc:
+            die(str(exc))
+        ok_count = tree["ok_count"]
+        bad = tree["failed"]
+        extras: list[str] = tree["unlisted"]
+        _unused_skipped: list[str] = tree["skipped"]
         ok = result["ok"] and not bad and not extras
         _set_result(
             args,
@@ -1047,7 +1050,7 @@ def cmd_status(args: argparse.Namespace) -> int:
                 "ok": ok,
                 "signature_ok": result["ok"],
                 "checked": len(entries),
-                "good": len(good),
+                "good": ok_count,
                 "failed": bad[:1000],
                 "unlisted": extras[:1000],
                 "skipped": _unused_skipped[:500],
@@ -1072,7 +1075,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             mark = "✅" if ok else "❌"
             print(
                 f"{mark} {p}: 清单签名{'有效' if result['ok'] else '无效'}，"
-                f"{len(good)}/{len(entries)} 个文件一致"
+                f"{ok_count}/{len(entries)} 个文件一致"
                 + (f"，{len(extras)} 个未列入清单" if extras else "")
             )
         _audit(args, "status", path=str(p), ok=ok)

@@ -42,3 +42,21 @@ curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/renengade/hash
 curl -fsSL .../install.sh | sh          # 升级
 uv tool uninstall hashseal              # 卸载
 ```
+
+
+## Windows（无 WSL，PowerShell 一键安装）
+
+```powershell
+irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+```
+
+- 需要 PowerShell 5.1+（Windows 10/11 自带）与 `tar.exe`（Win10 1803+ 自带）；
+- 未装 uv 会自动安装；hashseal 会写入用户 PATH（重开终端生效）；
+- 锁定版本 / 校验哈希：
+
+```powershell
+$env:HASHSEAL_REF = "v0.10.0"; $env:HASHSEAL_SHA256 = "<SHA256SUMS 中的值>"; irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+```
+
+- 升级：重新执行；卸载：`uv tool uninstall hashseal`；
+- Windows 原生安装对 `D:\` 等本地盘的大文件哈希比 WSL `/mnt/*`（9P）快 4–5 倍。

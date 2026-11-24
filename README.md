@@ -20,6 +20,12 @@ curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh 
 
 默认安装最新 release。锁定版本 / 镜像 / 升级：[docs/install.md](https://renengade.github.io/hashseal/install)
 
+Windows（无 WSL）PowerShell 一键安装：
+
+```powershell
+irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+```
+
 ## 60 秒上手
 
 ```bash

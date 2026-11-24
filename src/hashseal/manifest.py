@@ -203,6 +203,7 @@ def verify_entries(
     root: Path, entries: list[tuple[str, str]], *, jobs: int = 1
 ) -> tuple[list[dict], list[dict]]:
     """校验清单条目，返回 (通过项, 失败项)。结果保持输入顺序。"""
+
     def run(item: tuple[str, str]) -> dict:
         return _verify_one(root, item[0], item[1])
 
@@ -255,6 +256,109 @@ def find_unlisted(
             if rel_posix.as_posix() not in listed:
                 extras.append(rel_posix.as_posix())
     return extras, skipped
+
+
+def verify_tree(
+    root: Path,
+    entries: list[tuple[str, str]],
+    *,
+    excludes: tuple[str, ...] = (),
+    follow_symlinks: bool = False,
+    jobs: int = 1,
+    check_unlisted: bool = True,
+) -> dict:
+    """单次遍历完成清单校验 + 未列入收集（流式聚合，内存只保留失败项与计数）。
+
+    返回 {
+        "checked": 条目数,
+        "ok_count": 通过数,
+        "failed": 失败项（与 verify_entries.bad 同形状，保持输入顺序）,
+        "unlisted": 未列入清单的文件,
+        "skipped": 被跳过的条目（symlink/excluded）,
+    }
+
+    与 verify_entries + find_unlisted 的组合语义一致：
+    - check_unlisted=False 时等价 verify_entries（不做目录遍历）；
+    - 清单条目在遍历中未被看到（symlink 指向根外/异常）时，
+      回退到 resolve_member 直接哈希，保持旧语义。
+    """
+    listed_map = {rel: digest for digest, rel in entries}
+    index_of = {rel: i for i, (_digest, rel) in enumerate(entries)}
+    patterns = tuple(DEFAULT_EXCLUDES) + tuple(excludes)
+    root_resolved = root.resolve()
+
+    failed_by_index: dict[int, dict] = {}
+    tasks: list[tuple[int, Path]] = []  # (条目序号, 待哈希路径)
+    unlisted: list[str] = []
+    skipped: list[str] = []
+    seen: set[str] = set()
+
+    if check_unlisted:
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=follow_symlinks):
+            dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+            for name in sorted(filenames):
+                fp = Path(dirpath) / name
+                if fp.is_symlink() and not follow_symlinks:
+                    skipped.append(f"symlink: {fp}")
+                    continue
+                if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
+                    continue
+                try:
+                    resolved = fp.resolve().relative_to(root_resolved)
+                except (ValueError, OSError):
+                    continue
+                rel_posix = PurePosixPath(resolved.as_posix()).as_posix()
+                if _excluded(PurePosixPath(rel_posix), patterns):
+                    skipped.append(f"excluded: {rel_posix}")
+                    continue
+                if rel_posix in listed_map:
+                    seen.add(rel_posix)
+                    tasks.append((index_of[rel_posix], fp.resolve()))
+                else:
+                    unlisted.append(rel_posix)
+
+        def run(task: tuple[int, Path]) -> dict:
+            index, target = task
+            actual, _ = sha256_file(target)
+            digest = entries[index][0]
+            if actual != digest:
+                return {"path": entries[index][1], "reason": "内容不一致"}
+            return {"path": entries[index][1], "digest": actual, "ok": True}
+
+        if jobs > 1 and len(tasks) > 1:
+            with ThreadPoolExecutor(max_workers=min(jobs, len(tasks))) as ex:
+                for index, result in zip([t[0] for t in tasks], ex.map(run, tasks)):
+                    if not result.get("ok"):
+                        failed_by_index[index] = {
+                            "path": result["path"],
+                            "reason": result["reason"],
+                        }
+        else:
+            for index, target in tasks:
+                result = run((index, target))
+                if not result.get("ok"):
+                    failed_by_index[index] = {
+                        "path": result["path"],
+                        "reason": result["reason"],
+                    }
+
+    # 遍历中未看到的清单条目：回退直接哈希（保持 verify_entries 语义）
+    for index, (digest, rel) in enumerate(entries):
+        if rel in seen or index in failed_by_index:
+            continue
+        result = _verify_one(root, digest, rel)
+        if not result.get("ok"):
+            failed_by_index[index] = {"path": rel, "reason": result["reason"]}
+
+    failed = [failed_by_index[index] for index in sorted(failed_by_index)]
+    ok_count = len(entries) - len(failed)
+    return {
+        "checked": len(entries),
+        "ok_count": ok_count,
+        "failed": failed,
+        "unlisted": unlisted,
+        "skipped": skipped,
+    }
 
 
 def diff_manifests(left: list[tuple[str, str]], right: list[tuple[str, str]]) -> dict:
