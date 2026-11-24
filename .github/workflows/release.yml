@@ -43,7 +43,9 @@ jobs:
         run: uv build
 
       - name: 附带安装脚本（供 releases/latest/download 直链分发）
-        run: cp install.ps1 install.sh dist/
+        run: |
+          cp install.ps1 install.sh dist/
+          rm -f dist/.gitignore  # uv build 生成的占位文件，不作为发布资产
 
       - name: 生成 SHA256SUMS
         run: cd dist && sha256sum * > SHA256SUMS
