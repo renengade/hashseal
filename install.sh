@@ -1,7 +1,7 @@
 #!/bin/sh
 # hashseal installer（POSIX sh，兼容 dash / ash / bash）
 #
-#   curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
+#   curl -fsSL https://github.com/renengade/hashseal/releases/latest/download/install.sh | sh
 #
 # 安装到 uv 的独立工具环境（不污染系统 Python），并链接 hashseal 到 PATH。
 #
@@ -63,7 +63,7 @@ else
         *[!A-Za-z0-9._-]*) REF="" ;;
     esac
     if [ -z "$REF" ]; then
-        die "无法获取 latest release（网络不可达或限流）。请指定版本: HASHSEAL_REF=v0.9.1"
+        die "无法获取 latest release（网络不可达或限流）。请指定版本: HASHSEAL_REF=v0.10.4"
     fi
     say "使用最新发布: $REF"
     URL="$ARCHIVE_BASE/$REF.tar.gz"

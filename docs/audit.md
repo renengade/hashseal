@@ -2,7 +2,8 @@
 
 ## 配置文件
 
-默认路径 `~/.config/hashseal/config.toml`，可用 `HASHSEAL_CONFIG` 覆盖。
+默认路径 `~/.config/hashseal/config.toml`，可用 `HASHSEAL_CONFIG` 覆盖；
+`hashseal config-init` 生成模板，`hashseal config` 查看生效值。
 
 ```toml
 [hashseal]
@@ -22,15 +23,23 @@ audit_facility = "user"
 
 优先级：命令行 > 环境变量 > 配置文件 > 内置默认值。
 
+> **Windows 路径写法**：TOML 双引号里的 `\` 是转义。请用正斜杠
+> `key = "C:/Users/me/key.pem"` 或单引号 `key = 'C:\Users\me\key.pem'`。
+> 解析失败时 hashseal 会给出这条提示。
+
 ## 审计日志
 
-默认写 JSON Lines，按天或 10 MiB 滚动，超过 90 天的归档自动删除。`audit` 会同时读取活跃文件与归档。
+默认写 JSON Lines，按天或 10 MiB 滚动，超过 90 天的归档自动删除；
+`audit` 会读取活跃文件与归档。
+
+审计日志**始终开启**，没有关闭开关；CLI 与 GUI 的每个操作都记录。
 
 ```json
 {
-  "ts": "2026-11-13T12:00:00+00:00",
-  "ts_local": "2026-11-13 20:00:00 +0800（UTC 2026-11-13 12:00:00）",
+  "ts": "2026-11-24T12:00:00+00:00",
+  "ts_local": "2026-11-24 20:00:00 +0800（UTC 2026-11-24 12:00:00）",
   "event": "sign",
+  "source": "cli",
   "user": "jianglinlin",
   "uid": 1000,
   "hostname": "workstation",
@@ -40,14 +49,18 @@ audit_facility = "user"
 }
 ```
 
-审计日志始终开启，不提供关闭开关。每条记录包含操作者 `user`、`uid`、
-`hostname` 与主 IPv4 `ip`；通过 SSH 执行时额外记录 `ssh_client`，`sudo` 下记录 `sudo_user`。
+- `source`：`cli` 或 `gui`；
+- 失败也会留痕：命令异常退出且尚未写过失败事件时，补一条
+  `{"event":"command_failed","command":"verify","error":"…","exit_code":2}`；
+  命令自身已审计失败（`ok:false`）时不重复；
+- 操作者信息：`user`、`uid`、`hostname`、主 IPv4 `ip`；SSH 下附 `ssh_client`，
+  `sudo` 下附 `sudo_user`。
 
-> CLI 没有“客户端/服务端”概念，`ip` 是本机主 IP；`ssh_client` 才是 SSH 来源 IP。
+sink：
 
-- `audit_sink=file`：本地文件，按天或 10 MiB 滚动，默认保留 90 天；
-- `audit_sink=syslog`：写入系统 syslog（Unix）；不可用时回退本地文件；
-- `audit_sink=both`：两边都写，syslog 失败不影响文件。
+- `file`：本地文件（按天/大小滚动，保留 90 天）；
+- `syslog`：写入系统 syslog（Unix；Windows 无 syslog，自动回退文件）；
+- `both`：两边都写，syslog 失败不影响文件。
 
 环境变量：
 
@@ -61,8 +74,11 @@ audit_facility = "user"
 查看：
 
 ```bash
-hashseal audit -n 50
-journalctl -t hashseal        # sink=syslog 时
+hashseal audit -n 50          # 最近 50 条
+hashseal audit -n 500 --json  # 原始 JSON Lines
 ```
 
-> 本地文件与本地 syslog 都无法防 root 篡改。合规场景应把日志转发到 SIEM 或只写存储。
+GUI 的「审计」页提供同样内容（按事件/路径过滤）。
+
+> 本地文件与本地 syslog 都无法防 root 篡改；审计没有哈希链/外部锚点，
+> 合规场景应把日志转发到 SIEM 或只写存储。

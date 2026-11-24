@@ -15,7 +15,6 @@ theme:
 nav:
   - 首页: index.md
   - 安装: install.md
-  - 快速上手: index.md
   - 核心概念: concepts.md
   - 命令详解: commands.md
   - GUI 界面: gui.md

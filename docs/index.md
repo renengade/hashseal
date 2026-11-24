@@ -1,14 +1,22 @@
 # hashseal
 
-用 **SHA-256 + Ed25519 + RFC 3161** 证明文件"没被改过、是谁发的、什么时候发的"。
+用 **SHA-256 + Ed25519 + RFC 3161** 证明文件「没被改过、是谁发的、什么时候发的」。
 
 ## 安装
 
+Linux / macOS / WSL：
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/renengade/hashseal/main/install.sh | sh
+curl -fsSL https://github.com/renengade/hashseal/releases/latest/download/install.sh | sh
 ```
 
-默认安装最新 release；生产环境建议锁定版本并校验 SHA-256。
+Windows（无 WSL，PowerShell）：
+
+```powershell
+irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 | iex
+```
+
+默认安装最新 release；生产环境建议锁定版本并校验 SHA-256（见[安装](install.md)）。
 
 ## 60 秒上手
 
@@ -21,9 +29,19 @@ hashseal sign dist/ --timestamp
 hashseal verify dist/
 ```
 
+## 两种用法
+
+```bash
+hashseal gui        # 本地浏览器界面（别名：hashseal web）
+hashseal sign ...   # CLI / 脚本 / CI
+```
+
+GUI 与 CLI 共用同一套核心代码、密钥、配置与审计日志，可同时使用。
+
 ## 文档
 
-- [安装](install.md) — 版本锁定、镜像、卸载
+- [安装](install.md) — 版本锁定、Windows、镜像、升级与卸载
+- [GUI 界面](gui.md) — 页面、交互、口令保管与安全模型
 - [核心概念](concepts.md) — 三件产物、信任链、清单原理
 - [命令详解](commands.md) — 全部命令与选项
 - [时间戳](timestamps.md) — TSA、回退链、LTV

@@ -1,13 +1,13 @@
 # hashseal installer（Windows PowerShell 5.1+，无需 WSL）
 #
-#   irm https://raw.githubusercontent.com/renengade/hashseal/main/install.ps1 | iex
+#   irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 | iex
 #
 # 注意：本文件必须保存为 UTF-8（无 BOM）+ CRLF——BOM 会让 `irm | iex` 把首行
 # 解析成命令而出错（PS5.1 双击/落盘运行无 BOM 文件会按 ANSI 误读中文，因此
 # 落盘运行请先：Get-Content -Raw -Encoding UTF8 install.ps1 | iex）。
 #
 # 可用环境变量覆盖（与 install.sh 一致）：
-#   HASHSEAL_REF=v0.10.0   指定 tag/分支（生产建议锁定 tag；main 表示跟随开发分支）
+#   HASHSEAL_REF=v0.10.4   指定 tag/分支（生产建议锁定 tag；main 表示跟随开发分支）
 #   HASHSEAL_REPO=owner/repo
 #   HASHSEAL_URL=<url>     直接指定源码包地址（跳过 latest 解析）
 #   HASHSEAL_API_URL=<url> 覆盖 latest release API
@@ -77,7 +77,7 @@ if ($env:HASHSEAL_URL) {
     try {
         $Ref = Resolve-Latest
     } catch {
-        Die "无法获取 latest release（网络不可达或限流）。请先设置: `$env:HASHSEAL_REF='v0.10.0' 再重试"
+        Die "无法获取 latest release（网络不可达或限流）。请先设置: `$env:HASHSEAL_REF='v0.10.4' 再重试"
     }
     Say "使用最新发布: $Ref"
     $Url = "$ArchiveBase/$Ref.tar.gz"
