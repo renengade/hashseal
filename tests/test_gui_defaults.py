@@ -69,15 +69,19 @@ class PathDefaultsTest(unittest.TestCase):
     def _field(self, command: dict, name: str) -> dict:
         return next(f for f in command["fields"] if f["name"] == name)
 
+    def assert_default(self, field: dict, name: str) -> None:
+        value = field["default"]
+        self.assertEqual(os.path.basename(value), name, value)
+        # macOS /var→/private/var、Windows 8.3 短路径：用 samefile 比较父目录
+        self.assertTrue(os.path.samefile(os.path.dirname(value), self.tmp), value)
+
     def test_defaults_follow_config(self) -> None:
         commands = self._commands()
         keygen = commands["keygen"]
-        self.assertEqual(self._field(keygen, "private")["default"], str(self.tmp / "mykey.pem"))
-        self.assertEqual(self._field(keygen, "public")["default"], str(self.tmp / "mypub.pem"))
-        sign = commands["sign"]
-        self.assertEqual(self._field(sign, "key")["default"], str(self.tmp / "mykey.pem"))
-        verify = commands["verify"]
-        self.assertEqual(self._field(verify, "key")["default"], str(self.tmp / "mypub.pem"))
+        self.assert_default(self._field(keygen, "private"), "mykey.pem")
+        self.assert_default(self._field(keygen, "public"), "mypub.pem")
+        self.assert_default(self._field(commands["sign"], "key"), "mykey.pem")
+        self.assert_default(self._field(commands["verify"], "key"), "mypub.pem")
 
     def test_outside_root_default_omitted(self) -> None:
         # 把配置指向根外的路径 → 默认不预填（留空走 CLI 兜底）

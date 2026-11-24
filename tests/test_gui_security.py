@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import os
 import unittest
-from pathlib import Path
 
 from gui_base import GuiTestBase
 
@@ -139,10 +139,18 @@ class PathJailTest(GuiTestBase):
         self.assertEqual(status, 200)
         names = [e["name"] for e in payload["entries"]]
         self.assertIn("sub", names)
-        # 父目录要么不可上溯（None），要么必须是某个允许根（Windows 下 tmp 位于 home 内）
+        # 父目录要么不可上溯（None），要么必须落在某个允许根内
+        # （Windows 下 tmp 位于用户 home 内；用 realpath 消除 8.3 短路径差异）
+        def canon(p: str) -> str:
+            return os.path.normcase(os.path.realpath(str(p)).removeprefix("\\\\?\\"))
+
         if payload["parent"] is not None:
+            parent = canon(payload["parent"])
             self.assertTrue(
-                any(Path(r) == Path(payload["parent"]) for r in payload["roots"]),
+                any(
+                    parent == canon(r) or parent.startswith(canon(r) + os.sep)
+                    for r in payload["roots"]
+                ),
                 payload,
             )
 
