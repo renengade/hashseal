@@ -15,18 +15,66 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv build
-      - run: cd dist && sha256sum * > SHA256SUMS
+
+      - name: 校验 tag 与 pyproject 版本一致
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          ref = os.environ["GITHUB_REF_NAME"]
+          pyproject = open("pyproject.toml", encoding="utf-8").read()
+          match = re.search(r'^version = "([^"]+)"', pyproject, re.M)
+          version = match.group(1) if match else ""
+          if ref != "v" + version:
+              sys.exit(f"tag {ref!r} 与 pyproject.toml version {version!r} 不一致，拒绝发布")
+          print(f"版本一致: {ref} == v{version}")
+          PY
+
+      - name: 发布前测试
+        run: |
+          uv sync --locked --group dev
+          uv run pytest -q
+
+      - name: 构建
+        run: uv build
+
+      - name: 生成 SHA256SUMS
+        run: cd dist && sha256sum * > SHA256SUMS
+
+      - name: 生成发布说明（取自 CHANGELOG）
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+
+          version = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          pattern = rf"^## {re.escape(version)}\n(.*?)(?=^## |\Z)"
+          match = re.search(pattern, text, re.M | re.S)
+          body = f"## {version}\n\n" + (match.group(1) if match else "详见 CHANGELOG.md")
+          open("release_notes.md", "w", encoding="utf-8").write(body)
+          print(body)
+          PY
+
       - uses: actions/attest-build-provenance@v1
         with:
           subject-path: "dist/*"
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/*
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body_path: release_notes.md
 
   publish:
     needs: build
