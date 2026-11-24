@@ -28,14 +28,27 @@ command -v curl >/dev/null 2>&1 || die "需要 curl"
 command -v tar  >/dev/null 2>&1 || die "需要 tar"
 
 resolve_latest() {
+    # 方式 1: GitHub API
     if [ -n "${GITHUB_TOKEN:-}" ]; then
-        json="$(curl -fsSL -m 20 -H "Authorization: Bearer $GITHUB_TOKEN" "$API_URL" 2>/dev/null)" || return 1
+        json="$(curl -fsSL -m 20 -H "Authorization: Bearer $GITHUB_TOKEN" "$API_URL" 2>/dev/null)" || json=""
     else
-        json="$(curl -fsSL -m 20 "$API_URL" 2>/dev/null)" || return 1
+        json="$(curl -fsSL -m 20 "$API_URL" 2>/dev/null)" || json=""
     fi
-    printf '%s\n' "$json" \
+    tag="$(printf '%s\n' "$json" \
         | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-        | head -n 1
+        | head -n 1)"
+    [ -n "$tag" ] && { printf '%s\n' "$tag"; return 0; }
+
+    # 方式 2: releases/latest 302 redirect（不需要 API）
+    redirect_url="$(curl -4 -fsSI -m 15 -o /dev/null -w '%{redirect_url}' \
+        "https://github.com/$REPO/releases/latest" 2>/dev/null)"
+    tag="$(printf '%s\n' "$redirect_url" | sed 's#.*/tag/##' | tr -d '[:space:]\r')"
+    case "$tag" in
+        *[!A-Za-z0-9._-]*) tag="" ;;
+    esac
+    [ -n "$tag" ] && { printf '%s\n' "$tag"; return 0; }
+
+    return 1
 }
 
 if [ -n "${HASHSEAL_URL:-}" ]; then
@@ -50,11 +63,9 @@ else
         *[!A-Za-z0-9._-]*) REF="" ;;
     esac
     if [ -z "$REF" ]; then
-        REF="main"
-        say "警告: 无法获取 latest release（API 不可用或限流），回退到 main 分支"
-    else
-        say "使用最新发布: $REF"
+        die "无法获取 latest release（网络不可达或限流）。请指定版本: HASHSEAL_REF=v0.9.1"
     fi
+    say "使用最新发布: $REF"
     URL="$ARCHIVE_BASE/$REF.tar.gz"
 fi
 
