@@ -164,8 +164,11 @@ function basename(p) {
  */
 export function pickPath({ mode = "any", title = "选择路径", initial = "", roots = [] } = {}) {
   return new Promise((resolve) => {
-    let state = { path: null, entries: [], parent: null, filter: "", hidden: false, outName: "", roots: [] };
-    const selected = new Set();
+    let state = {
+      path: null, entries: [], parent: null, filter: "", hidden: false,
+      outName: "", roots: [], pickedFile: null,
+    };
+    const selected = new Set(); // multi 模式的多选
     let done = false;
 
     if (mode === "out") {
@@ -191,47 +194,36 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       type: "text", placeholder: "按名称过滤…", "aria-label": "过滤",
       oninput: (e) => { state.filter = e.target.value.trim().toLowerCase(); renderList(); },
     });
-    const hiddenInput = el("input", { type: "checkbox", onchange: (e) => { state.hidden = e.target.checked; navigate(state.path, false); } });
-    const manualInput = el("input", { type: "text", placeholder: "或直接输入完整路径", "aria-label": "手动输入路径" });
+    const hiddenInput = el("input", {
+      type: "checkbox",
+      onchange: (e) => { state.hidden = e.target.checked; navigate(state.path, false); },
+    });
     const outNameInput = el("input", { type: "text", placeholder: "文件名", "aria-label": "文件名", value: state.outName });
 
-    const footButtons = [];
-    if (mode === "dir" || mode === "any") {
-      footButtons.push(el("button", {
-        class: "btn btn-primary", type: "button",
-        onclick: () => finish(state.path || roots[0] || "/"),
-      }, mode === "dir" ? "使用此目录" : "使用当前目录"));
-    }
-    if (mode === "out") {
-      footButtons.push(el("button", {
-        class: "btn btn-primary", type: "button",
-        onclick: () => {
+    const confirmBtn = el("button", {
+      class: "btn btn-primary", type: "button",
+      onclick: () => {
+        if (mode === "multi") {
+          if (!selected.size) { toast("请先点选文件或目录", "fail"); return; }
+          finish(Array.from(selected));
+          return;
+        }
+        if (mode === "out") {
           const name = outNameInput.value.trim();
           if (!name) { toast("请填写文件名", "fail"); return; }
           finish(joinPath(state.path || roots[0] || "/", name));
-        },
-      }, "保存到此目录"));
-    }
-    if (mode === "multi") {
-      const addBtn = el("button", {
-        class: "btn btn-primary", type: "button",
-        onclick: () => {
-          if (!selected.size) { toast("请先勾选文件或目录", "fail"); return; }
-          finish(Array.from(selected));
-        },
-      }, "添加所选");
-      const tick = setInterval(() => {
-        addBtn.textContent = `添加所选（${selected.size}）`;
-        if (done) clearInterval(tick);
-      }, 300);
-      footButtons.push(addBtn);
-    }
-    footButtons.push(el("button", {
-      class: "btn btn-ghost", type: "button",
-      onclick: () => finish(manualInput.value.trim() || null),
-    }, "使用输入的路径"));
+          return;
+        }
+        finish(state.pickedFile || state.path || roots[0] || "/");
+      },
+    }, "确定");
 
-    async function navigate(path, updateManual = true) {
+    const tick = setInterval(() => {
+      confirmBtn.textContent = mode === "multi" ? `确定（已选 ${selected.size}）` : "确定";
+      if (done) clearInterval(tick);
+    }, 300);
+
+    async function navigate(path) {
       const attempted = path || null;
       let data;
       try {
@@ -250,8 +242,8 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       state.entries = data.entries || [];
       state.parent = data.parent;
       state.roots = data.roots || roots;
+      state.pickedFile = null; // 换目录后清除单选
       if (state.path) sessionStorage.setItem(LAST_DIR_KEY, state.path);
-      if (updateManual) manualInput.value = data.path || "";
       renderCrumbs(state.roots);
       renderList();
     }
@@ -294,7 +286,7 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
           }, icon("folder"), el("span", {}, root)));
         }
         listEl.append(el("div", { class: "picker-row disabled" },
-          "↑ 从上面的根目录进入；也可以直接在下方输入完整路径"));
+          "↑ 从上面的根目录进入；选中后按“确定”"));
         return;
       }
       const entries = state.entries.filter((e2) =>
@@ -308,11 +300,12 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
         listEl.append(el("div", { class: "picker-row disabled" }, "（空目录或全部被过滤）"));
       }
       for (const entry of entries) {
-        const clickable = entry.navigable || entry.kind === "file";
+        const isSelected =
+          state.pickedFile === entry.path || selected.has(entry.path);
         const row = el(
           "button",
           {
-            class: "picker-row" + (selected.has(entry.path) ? " selected" : ""),
+            class: "picker-row" + (isSelected ? " selected" : ""),
             type: "button",
             onclick: () => onRow(entry),
           },
@@ -320,31 +313,30 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
           el("span", {}, (entry.symlink ? "↗ " : "") + entry.name),
           entry.kind === "file" ? el("span", { class: "size" }, fmtBytes(entry.size)) : null,
         );
-        if (!clickable) row.classList.add("disabled");
+        if (entry.kind === "dir" && !entry.navigable) row.classList.add("disabled");
         listEl.append(row);
       }
     }
 
     function onRow(entry) {
-      if (entry.kind === "dir" && entry.navigable) {
+      if (entry.kind === "dir") {
+        if (!entry.navigable) { toast("该目录无法访问（根目录限制）", "fail"); return; }
         if (mode === "multi") {
           selected.has(entry.path) ? selected.delete(entry.path) : selected.add(entry.path);
           renderList();
           return;
         }
-        navigate(entry.path);
+        navigate(entry.path); // 单选模式：进入目录，按“确定”选用当前目录
         return;
       }
-      if (entry.kind === "file") {
-        if (mode === "multi") {
-          selected.has(entry.path) ? selected.delete(entry.path) : selected.add(entry.path);
-          renderList();
-        } else {
-          finish(entry.path);
-        }
+      // 文件
+      if (mode === "dir") { toast("请选择目录：进入目录后按“确定”", "fail"); return; }
+      if (mode === "multi") {
+        selected.has(entry.path) ? selected.delete(entry.path) : selected.add(entry.path);
       } else {
-        toast("该目录无法访问（根目录限制）", "fail");
+        state.pickedFile = entry.path; // 单选：高亮，按“确定”生效
       }
+      renderList();
     }
 
     const content = el(
@@ -357,12 +349,12 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
         el("label", { class: "switch", style: "flex:none" }, hiddenInput, el("span", { class: "track" }), el("span", {}, "隐藏文件")),
       ),
       listEl,
-      el("div", { class: "field", style: "margin-top:14px" },
-        el("div", { class: "field-row" }, manualInput,
-          el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => finish(manualInput.value.trim() || null) }, "使用")),
-        mode === "out" ? el("div", { class: "field-row" }, outNameInput) : null,
-      ),
-      el("div", { class: "form-actions" }, ...footButtons,
+      mode === "out"
+        ? el("div", { class: "field", style: "margin-top:14px" },
+            el("div", { class: "field-label" }, el("span", {}, "文件名")), outNameInput)
+        : null,
+      el("div", { class: "form-actions" },
+        confirmBtn,
         el("button", { class: "btn btn-ghost", type: "button", onclick: () => finish(null) }, "取消")),
     );
 
@@ -560,13 +552,6 @@ function warningsBox(warnings) {
   return el("ul", { class: "warn-list" }, warnings.slice(0, 20).map((w) => el("li", {}, w)));
 }
 
-function outputDetails(task) {
-  if (!task.output) return null;
-  return el("details", { class: "rawout" },
-    el("summary", {}, "CLI 原始输出"),
-    el("pre", {}, task.output || "（无输出）"));
-}
-
 function cmdLineRow(task) {
   if (!task.argv || !task.argv.length) return null;
   return el("div", { style: "margin-top:14px;display:flex;gap:8px;align-items:center" },
@@ -733,7 +718,6 @@ export function taskResult(command, task) {
   const box = el("div", {},
     warningsBox(task.warnings),
     ...kids,
-    cmdLineRow(task),
-    outputDetails(task));
+    cmdLineRow(task));
   return box;
 }

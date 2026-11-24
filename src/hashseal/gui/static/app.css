@@ -30,13 +30,11 @@
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
   --inner-highlight: inset 0 1px 0 rgba(0, 243, 255, 0.04);
 
-  /* phycat-abyss 字体：霞鹜文楷正文 + Cascadia Code 等宽
-     （未安装时自动回退到系统字体；安装后即得同款观感） */
-  --font: "LXGW WenKai", "霞鹜文楷", system-ui, -apple-system, "Segoe UI",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
-    sans-serif;
-  --mono: "Cascadia Code", "Cascadia", Consolas, "Lucida Console",
-    "Courier New", monospace;
+  /* 系统字体栈：任何平台开箱即用（Windows: Segoe UI + 微软雅黑 + Consolas） */
+  --font: "Segoe UI", system-ui, -apple-system, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --mono: ui-monospace, Consolas, "SF Mono", Menlo, Monaco,
+    "Liberation Mono", monospace;
 
   --sidebar-w: 216px;
 
@@ -59,7 +57,7 @@ body {
 
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 
-h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: 0; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
 p { margin: 0; }
 a { color: var(--accent-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -156,7 +154,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
   color: var(--text);
   font-weight: 650;
   font-size: 16px;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
 }
 .brand:hover { text-decoration: none; }
 .brand-mark { width: 24px; height: 24px; color: var(--text); }
@@ -208,7 +206,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
   text-transform: uppercase;
   color: var(--faint);
 }
-.page-title { font-size: clamp(30px, 4vw, 44px); letter-spacing: 0; line-height: 1.2; }
+.page-title { font-size: clamp(30px, 4vw, 44px); letter-spacing: -0.03em; line-height: 1.15; }
 .page-desc { color: var(--muted); margin-top: 8px; max-width: 640px; }
 
 /* ---------- 卡片 ---------- */
@@ -310,7 +308,7 @@ details.adv .form-grid { margin-top: 4px; }
   margin-bottom: 14px; font-size: 14.5px;
 }
 .banner svg { width: 20px; height: 20px; flex: none; margin-top: 2px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.banner strong { display: block; font-size: 16px; letter-spacing: 0; }
+.banner strong { display: block; font-size: 16px; letter-spacing: -0.01em; }
 .banner .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .banner.ok { background: rgba(127, 219, 202, 0.08); border: 1px solid rgba(127, 219, 202, 0.25); color: var(--ok); }
 .banner.ok .sub { color: var(--muted); }
@@ -335,13 +333,6 @@ details.adv .form-grid { margin-top: 4px; }
 
 .warn-list { margin: 10px 0 0; padding: 12px 14px; border: 1px solid rgba(236, 196, 141, 0.25); border-radius: var(--radius-control); background: rgba(236, 196, 141, 0.05); color: var(--warn); font-size: 12.5px; }
 .warn-list li { margin-left: 16px; }
-
-details.rawout summary { cursor: pointer; color: var(--faint); font-size: 12px; margin-top: 12px; }
-details.rawout pre {
-  margin: 8px 0 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-control);
-  background: var(--bg-deep); color: var(--muted); font-family: var(--mono); font-size: 12px;
-  max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-all;
-}
 
 /* ---------- 表格 ---------- */
 .table-wrap { border: 1px solid var(--border); border-radius: var(--radius-control); overflow: auto; max-height: 420px; }
@@ -412,7 +403,7 @@ progress.runbar { width: 200px; height: 6px; accent-color: var(--accent); }
 }
 .hero-inner { position: relative; max-width: 1120px; margin: 0 auto; }
 .hero-kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint); }
-.hero-title { font-size: clamp(44px, 7vw, 72px); letter-spacing: 0; line-height: 1.15; margin-top: 10px; }
+.hero-title { font-size: clamp(44px, 7vw, 72px); letter-spacing: -0.03em; line-height: 1.08; margin-top: 10px; }
 .hero-sub { color: var(--muted); margin-top: 14px; max-width: 560px; font-size: 15px; }
 .hero-actions { display: flex; gap: 10px; margin-top: 26px; flex-wrap: wrap; }
 .hero-art { position: absolute; right: 8px; bottom: -12px; width: 300px; color: var(--text); opacity: 0.4; pointer-events: none; }

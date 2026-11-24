@@ -54,23 +54,9 @@ hashseal gui --root /mnt/c/Users/你的用户名
 
 ## 界面风格与字体
 
-配色与排版参考 phycat-abyss（Midnight Abyss）主题：午夜蓝底、冰蓝白文字、电光青主色。
+配色参考 phycat-abyss（Midnight Abyss）主题：午夜蓝底、冰蓝白文字、电光青主色。字体使用**系统字体栈**（Windows 上为 Segoe UI + 微软雅黑，等宽为 Consolas），随操作系统自带，无需安装任何字体。
 
 表单默认只显示**必需项**（如签名 = 文件 + 私钥 + 口令）；TSA 地址、信任根、重试次数、排除规则、并行线程等都在折叠的“高级选项”里，按需展开。
-
-GUI 使用与该主题相同的字体，若系统安装了对应字体即可获得完全一致的观感（未安装则自动回退系统字体，功能不受影响）：
-
-- **霞鹜文楷（LXGW WenKai）**——正文
-- **Cascadia Code**——哈希、指纹等等宽内容
-
-安装方法：双击安装以下两个文件（Typora 主题目录里自带），或从官网下载安装：
-
-```
-C:\Users\<你>\AppData\Roaming\Typora\themes\phycat\LXGWWenKai-Regular.ttf
-C:\Users\<你>\AppData\Roaming\Typora\themes\phycat\Cascadia-Code-Regular.ttf
-```
-
-安装后刷新浏览器页面即可。
 
 ## 口令保管
 
