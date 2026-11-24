@@ -101,12 +101,15 @@ function route() {
   const main = document.getElementById("main");
   main.scrollTop = 0;
 
-  // 旧页离场（3D 翻页离场），新页入场
-  const old = main.querySelector(":scope > .page");
-  if (old) {
-    old.classList.remove("stagger");
-    old.classList.add("page-leave-" + dir);
-    setTimeout(() => old.remove(), 460);
+  // 快速连续切换时可能同时存在多个页面：把当前存在的所有页全部离场，
+  // 避免任何一个页面残留导致内容叠加（错页）。
+  const leaving = [...main.querySelectorAll(":scope > .page")];
+  if (leaving.length) {
+    for (const node of leaving) {
+      node.classList.remove("stagger", "page-enter-forward", "page-enter-back");
+      node.classList.add("page-leave-" + dir);
+    }
+    setTimeout(() => leaving.forEach((n) => n.remove()), 460);
   }
   const page = el("div", { class: "page page-enter-" + dir + " stagger" });
   main.append(page);
@@ -182,6 +185,7 @@ async function pageDashboard(page) {
 
   try {
     const { tasks } = await api.tasks();
+    if (!tasksCard.isConnected) return;
     tasksCard.textContent = "";
     tasksCard.append(el("div", { class: "card-head" }, el("div", { class: "card-title" }, "最近操作")));
     if (!tasks.length) {
@@ -198,6 +202,7 @@ async function pageDashboard(page) {
 
   try {
     const { events } = await api.audit(6);
+    if (!auditCard.isConnected) return;
     auditCard.textContent = "";
     auditCard.append(el("div", { class: "card-head" }, el("div", { class: "card-title" }, "审计日志（最近 6 条）")));
     if (!events.length) {
@@ -302,6 +307,7 @@ async function execute(cmd, options, resultBox) {
   resultBox.append(running);
   let currentTaskId = null;
   const onTask = (task) => {
+    if (!resultBox.isConnected) return; // 页面已离开
     currentTaskId = task.id;
     if (task.progress && task.state === "running") {
       const { stage, done, total } = task.progress;
@@ -317,10 +323,12 @@ async function execute(cmd, options, resultBox) {
   };
   try {
     const task = await runTask(cmd.name, options, onTask);
+    if (!resultBox.isConnected) return;
     resultBox.textContent = "";
     resultBox.append(taskResult(cmd.name, task));
     if (task.state === "succeeded") updateVaultChip();
   } catch (err) {
+    if (!resultBox.isConnected) return;
     resultBox.textContent = "";
     if (err instanceof ApiFail) {
       resultBox.append(el("div", { class: "banner fail" }, icon("alert"),
@@ -464,6 +472,7 @@ async function pageAudit(page) {
   const load = async () => {
     try {
       const data = await api.audit(Number(linesSelect.value));
+      if (!tableBox.isConnected) return; // 页面已离开，丢弃结果
       events = data.events || [];
       render();
     } catch (err) {
