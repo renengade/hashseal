@@ -147,6 +147,8 @@ export function confirmModal({ title, message, confirmLabel = "继续", danger =
 
 /* ---------- 路径选择器 ---------- */
 
+const LAST_DIR_KEY = "hashseal.lastDir";
+
 function joinPath(dir, name) {
   return dir.endsWith("/") ? dir + name : dir + "/" + name;
 }
@@ -162,7 +164,7 @@ function basename(p) {
  */
 export function pickPath({ mode = "any", title = "选择路径", initial = "", roots = [] } = {}) {
   return new Promise((resolve) => {
-    let state = { path: null, entries: [], parent: null, filter: "", hidden: false, outName: "" };
+    let state = { path: null, entries: [], parent: null, filter: "", hidden: false, outName: "", roots: [] };
     const selected = new Set();
     let done = false;
 
@@ -172,6 +174,8 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       state.outName = basename(initial || "");
     } else if (mode !== "multi" && initial) {
       state.path = initial.replace(/[^/]+$/, "") || null;
+    } else if (mode !== "multi") {
+      state.path = sessionStorage.getItem(LAST_DIR_KEY) || null;
     }
 
     const finish = (value) => {
@@ -228,18 +232,27 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
     }, "使用输入的路径"));
 
     async function navigate(path, updateManual = true) {
+      const attempted = path || null;
       let data;
       try {
         data = await api.browse(path || "", state.hidden);
       } catch (err) {
-        if (err instanceof ApiFail) { toast(err.message, "fail"); if (err.code === "outside_root") finish(null); }
+        if (err instanceof ApiFail) {
+          toast(err.message, "fail");
+          if (err.code === "outside_root" && attempted) {
+            state.path = null; // 记忆目录可能已不在根内 → 回到根级视图
+            navigate("");
+          }
+        }
         return;
       }
       state.path = data.path;
       state.entries = data.entries || [];
       state.parent = data.parent;
+      state.roots = data.roots || roots;
+      if (state.path) sessionStorage.setItem(LAST_DIR_KEY, state.path);
       if (updateManual) manualInput.value = data.path || "";
-      renderCrumbs(data.roots || roots);
+      renderCrumbs(state.roots);
       renderList();
     }
 
@@ -259,8 +272,31 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       });
     }
 
+    function rootChips(rootList) {
+      const box = el("div", { class: "chips", style: "margin-bottom:8px" });
+      for (const root of rootList || []) {
+        box.append(el("button", {
+          class: "chip", type: "button", style: "cursor:pointer",
+          onclick: () => navigate(root),
+        }, icon("folder"), el("span", {}, shortPath(root, 34))));
+      }
+      return box;
+    }
+
     function renderList() {
       listEl.textContent = "";
+      // 根级视图：把每个根目录作为可进入的条目展示
+      if (!state.path && (state.roots || roots).length) {
+        for (const root of (state.roots || roots)) {
+          listEl.append(el("button", {
+            class: "picker-row", type: "button",
+            onclick: () => navigate(root),
+          }, icon("folder"), el("span", {}, root)));
+        }
+        listEl.append(el("div", { class: "picker-row disabled" },
+          "↑ 从上面的根目录进入；也可以直接在下方输入完整路径"));
+        return;
+      }
       const entries = state.entries.filter((e2) =>
         !state.filter || e2.name.toLowerCase().includes(state.filter));
       if (state.parent !== null && state.parent !== undefined) {
@@ -315,6 +351,7 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       "div",
       {},
       crumbs,
+      rootChips(roots),
       el("div", { class: "field-row", style: "margin-bottom:10px" },
         filterInput,
         el("label", { class: "switch", style: "flex:none" }, hiddenInput, el("span", { class: "track" }), el("span", {}, "隐藏文件")),

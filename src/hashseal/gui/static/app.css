@@ -34,6 +34,10 @@
     "Liberation Mono", monospace;
 
   --sidebar-w: 216px;
+
+  --pad-top: 40px;
+  --pad-x: 44px;
+  --pad-bottom: 80px;
 }
 
 * { box-sizing: border-box; }
@@ -67,9 +71,65 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
   flex: 1;
   min-width: 0;
   margin-left: var(--sidebar-w);
-  padding: 40px 44px 80px;
+  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+  position: relative;
+  perspective: 1600px;
 }
 .content { max-width: 1120px; margin: 0 auto; }
+
+/* ---------- 翻页切换（书本 3D 翻页） ---------- */
+.page { position: relative; }
+.page-enter-forward {
+  animation: page-in-forward 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  transform-origin: left center;
+}
+.page-enter-back {
+  animation: page-in-back 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  transform-origin: right center;
+}
+.page-leave-forward,
+.page-leave-back {
+  position: absolute;
+  inset: 0;
+  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+.page-leave-forward {
+  animation: page-out-forward 0.36s ease both;
+  transform-origin: left center;
+}
+.page-leave-back {
+  animation: page-out-back 0.36s ease both;
+  transform-origin: right center;
+}
+@keyframes page-in-forward {
+  from { opacity: 0; transform: translateX(6%) rotateY(-9deg); }
+}
+@keyframes page-in-back {
+  from { opacity: 0; transform: translateX(-6%) rotateY(9deg); }
+}
+@keyframes page-out-forward {
+  to { opacity: 0; transform: translateX(-6%) rotateY(8deg); }
+}
+@keyframes page-out-back {
+  to { opacity: 0; transform: translateX(6%) rotateY(-9deg); }
+}
+
+/* 卡片级联入场 */
+.stagger > * { animation: card-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0.03s; }
+.stagger > *:nth-child(2) { animation-delay: 0.09s; }
+.stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger > *:nth-child(4) { animation-delay: 0.21s; }
+.stagger > *:nth-child(5) { animation-delay: 0.27s; }
+.stagger > *:nth-child(6) { animation-delay: 0.33s; }
+.stagger > *:nth-child(n + 7) { animation-delay: 0.38s; }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(12px); }
+}
 
 /* ---------- 侧栏 ---------- */
 .sidebar {
@@ -126,7 +186,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 .page-head::before {
   content: "";
   position: absolute;
-  inset: -44px -44px 0;
+  inset: calc(-1 * var(--pad-top)) calc(-1 * var(--pad-x)) 0;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.033) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.033) 1px, transparent 1px);
@@ -319,8 +379,8 @@ progress.runbar { width: 200px; height: 6px; accent-color: var(--accent-2); }
 /* ---------- 概览 hero（Endel 纯黑 + 大字 + 线稿） ---------- */
 .hero {
   position: relative;
-  margin: -40px -44px 34px;
-  padding: 72px 44px 58px;
+  margin: calc(-1 * var(--pad-top)) calc(-1 * var(--pad-x)) 34px;
+  padding: 72px var(--pad-x) 58px;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
   overflow: hidden;
@@ -415,6 +475,7 @@ progress.runbar { width: 200px; height: 6px; accent-color: var(--accent-2); }
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 960px) {
+  :root { --pad-top: 26px; --pad-x: 20px; --pad-bottom: 60px; }
   .sidebar {
     position: sticky; top: 0; width: 100%; height: auto;
     flex-direction: column; padding: 10px 12px;
@@ -424,8 +485,8 @@ progress.runbar { width: 200px; height: 6px; accent-color: var(--accent-2); }
   .nav-item { padding: 7px 10px; white-space: nowrap; }
   .nav-item span { font-size: 12.5px; }
   .sidebar-foot { flex-direction: row; align-items: center; justify-content: space-between; border-top: none; padding-top: 4px; }
-  .main { margin-left: 0; padding: 26px 20px 60px; }
-  .hero { margin: -26px -20px 26px; padding: 46px 20px 40px; }
+  .main { margin-left: 0; padding: var(--pad-top) var(--pad-x) var(--pad-bottom); }
+  .hero { margin: calc(-1 * var(--pad-top)) calc(-1 * var(--pad-x)) 26px; padding: 46px 20px 40px; }
   .hero-art { display: none; }
   .quick-grid, .dash-cols { grid-template-columns: 1fr; }
   .kv { grid-template-columns: 110px 1fr; }

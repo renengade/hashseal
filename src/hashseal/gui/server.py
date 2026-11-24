@@ -402,6 +402,17 @@ class GuiHandler(BaseHTTPRequestHandler):
         except ValueError:
             raise ApiError(400, "bad_request", "Content-Length 无效") from None
         if n < 0 or n > MAX_BODY:
+            # 超限：小体积先排干请求体再回 413（否则客户端写被重置、读不到响应）；
+            # 巨大声明直接断开。
+            if n <= (8 << 20):
+                remaining = n
+                while remaining > 0:
+                    chunk = self.rfile.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+            else:
+                self.close_connection = True
             raise ApiError(413, "too_large", f"请求体超过 {MAX_BODY} 字节上限")
         raw = b""
         while len(raw) < n:
@@ -495,21 +506,30 @@ def _is_wsl() -> bool:
 
 
 def _open_browser(url: str) -> None:
+    """WSL 下优先用 cmd.exe start（explorer.exe 对带 #fragment 的 URL 会打开文件管理器）。"""
     opened = False
     if _is_wsl():
-        candidates = [shutil.which("explorer.exe"), "/mnt/c/Windows/explorer.exe"]
-        for exe in candidates:
-            if exe and Path(exe).exists():
-                try:
-                    subprocess.Popen(
-                        [exe, url],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    opened = True
-                    break
-                except OSError:
-                    continue
+        candidates: list[tuple[str, tuple[str, ...]]] = []
+        wslview = shutil.which("wslview")
+        if wslview:
+            candidates.append(("wslview", (wslview, url)))
+        cmd = shutil.which("cmd.exe") or "/mnt/c/Windows/System32/cmd.exe"
+        if cmd and Path(cmd).exists():
+            candidates.append(("cmd", (cmd, "/c", "start", "", url)))
+        explorer = shutil.which("explorer.exe") or "/mnt/c/Windows/explorer.exe"
+        if explorer and Path(explorer).exists():
+            candidates.append(("explorer", (explorer, url)))
+        for name, argv in candidates:
+            try:
+                subprocess.Popen(
+                    argv,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                opened = True
+                break
+            except OSError:
+                continue
     if not opened:
         try:
             opened = webbrowser.open(url)
@@ -564,6 +584,9 @@ def serve(settings: GuiSettings) -> int:
     print("hashseal GUI 已启动（仅本机）", flush=True)
     print(f"  地址: {url}", flush=True)
     print(f"  根目录: {', '.join(server.roots.display)}", flush=True)
+    missing = [r for r in server.roots.display if not Path(r).exists()]
+    if missing:
+        print(f"  警告: 以下根目录不存在，浏览时不可进入: {', '.join(missing)}", flush=True)
     if settings.read_only:
         print("  模式: 只读（签名/生成/解包等写操作已禁用）", flush=True)
     print("  按 Ctrl+C 停止", flush=True)

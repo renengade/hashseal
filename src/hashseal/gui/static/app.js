@@ -82,21 +82,40 @@ function renderFatal(err) {
 
 /* ---------- 路由 ---------- */
 
+const NAV_ORDER = ["", "verify", "sign", "keys", "dirs", "stamps", "tools", "audit", "settings"];
+
 function route() {
   const hash = location.hash.replace(/^#\/?/, "");
+  const prev = NAV_ORDER.indexOf(state.currentRoute);
+  const next = NAV_ORDER.indexOf(hash);
+  const dir =
+    prev === -1 || prev === next || next === -1
+      ? "forward"
+      : next > prev
+        ? "forward"
+        : "back";
   state.currentRoute = hash;
   document.querySelectorAll(".nav-item").forEach((a) => {
     a.classList.toggle("active", (a.dataset.route || "") === hash);
   });
   const main = document.getElementById("main");
   main.scrollTop = 0;
-  if (hash === "") return pageDashboard(main);
-  if (hash === "audit") return pageAudit(main);
-  if (hash === "settings") return pageSettings(main);
-  if (state.sectionCommands[hash]) return pageCommands(main, hash);
-  main.textContent = "";
-  main.append(el("div", { class: "content" },
-    el("div", { class: "banner warn" }, icon("alert"), el("div", {}, "页面不存在"))));
+
+  // 旧页离场（3D 翻页离场），新页入场
+  const old = main.querySelector(":scope > .page");
+  if (old) {
+    old.classList.remove("stagger");
+    old.classList.add("page-leave-" + dir);
+    setTimeout(() => old.remove(), 460);
+  }
+  const page = el("div", { class: "page page-enter-" + dir + " stagger" });
+  main.append(page);
+
+  if (hash === "") return pageDashboard(page);
+  if (hash === "audit") return pageAudit(page);
+  if (hash === "settings") return pageSettings(page);
+  if (state.sectionCommands[hash]) return pageCommands(page, hash);
+  page.append(el("div", { class: "banner warn" }, icon("alert"), el("div", {}, "页面不存在")));
 }
 
 function pageHead(sectionId, title, desc) {
@@ -108,9 +127,8 @@ function pageHead(sectionId, title, desc) {
 
 /* ---------- 概览 ---------- */
 
-async function pageDashboard(main) {
-  main.textContent = "";
-  const content = el("div", { class: "content" });
+async function pageDashboard(page) {
+  const content = el("div", { class: "content stagger" });
 
   const hero = el("div", { class: "hero" },
     el("div", { class: "hero-inner" },
@@ -160,7 +178,7 @@ async function pageDashboard(main) {
   }
   content.append(hero, quick, dash);
   dash.append(tasksCard, auditCard);
-  main.append(content);
+  page.append(content);
 
   try {
     const { tasks } = await api.tasks();
@@ -204,12 +222,11 @@ async function pageDashboard(main) {
 
 /* ---------- 命令页 ---------- */
 
-function pageCommands(main, sectionId) {
-  main.textContent = "";
+function pageCommands(page, sectionId) {
   const commands = state.sectionCommands[sectionId] || [];
   if (!state.activeCommand[sectionId]) state.activeCommand[sectionId] = commands[0];
 
-  const content = el("div", { class: "content" });
+  const content = el("div", { class: "content stagger" });
   content.append(pageHead(
     sectionId,
     SECTION_LABEL[sectionId] || sectionId,
@@ -247,7 +264,7 @@ function pageCommands(main, sectionId) {
   }
 
   content.append(tabs, cardBox);
-  main.append(content);
+  page.append(content);
   renderCard();
 
   if (sectionId === "keys") {
@@ -405,9 +422,8 @@ function vaultCard() {
 
 /* ---------- 审计 ---------- */
 
-async function pageAudit(main) {
-  main.textContent = "";
-  const content = el("div", { class: "content" });
+async function pageAudit(page) {
+  const content = el("div", { class: "content stagger" });
   content.append(pageHead("audit", "审计日志", "所有 CLI 与 GUI 操作都会记录；GUI 记录的 source 为 gui。"));
 
   const linesSelect = el("select", {},
@@ -468,15 +484,14 @@ async function pageAudit(main) {
         onclick: () => { rawMode = !rawMode; render(); },
       }, "原始 JSON")),
     tableBox));
-  main.append(content);
+  page.append(content);
   load();
 }
 
 /* ---------- 设置 ---------- */
 
-function pageSettings(main) {
-  main.textContent = "";
-  const content = el("div", { class: "content" });
+function pageSettings(page) {
+  const content = el("div", { class: "content stagger" });
   content.append(pageHead("settings", "设置", "配置、根目录与服务信息。"));
 
   const cfg = state.status.config || {};
@@ -538,7 +553,7 @@ function pageSettings(main) {
               el("div", {}, el("strong", {}, "服务已退出"), el("div", { class: "sub" }, "可关闭此页面。")))));
         },
       }, "退出服务"))));
-  main.append(content);
+  page.append(content);
 }
 
 boot();
