@@ -3,9 +3,14 @@
 const TOKEN_KEY = "hashseal.token";
 
 export function initToken() {
-  const match = location.hash.match(/^#token=(.+)$/);
+  const match = location.hash.match(/^#token=([^&]*)&?(.*)$/);
   if (match) {
     sessionStorage.setItem(TOKEN_KEY, decodeURIComponent(match[1]));
+    const rest = match[2] || "";
+    if (rest.startsWith("next=")) {
+      history.replaceState(null, "", "#" + decodeURIComponent(rest.slice(5)));
+      return true;
+    }
     history.replaceState(null, "", "#/");
     return true;
   }

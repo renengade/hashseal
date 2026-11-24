@@ -358,7 +358,8 @@ _COMMAND_LIST: list[Command] = [
                 type="password",
                 label="私钥口令",
                 gui_only=True,
-                help="留空不加密（不推荐）；须 ≥8 位且包含大小写字母/数字/特殊字符中的至少 3 种",
+                placeholder="≥8 位，含大小写字母/数字/特殊字符至少 3 种",
+                help="留空不加密（不推荐）",
             ),
             _f(
                 name="remember",

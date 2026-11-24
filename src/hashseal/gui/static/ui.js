@@ -497,14 +497,11 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       get = () => input.value || null;
       const parts = [pwWrap];
       if (command.name === "keygen") {
-        // 口令复杂性：≥8 位且至少 3 种字符类型（大小写字母/数字/特殊字符）
-        const weakHint = el("div", {
-          class: "field-help", style: "color:var(--danger-text);display:none",
-        }, "口令不满足复杂性要求：长度 ≥8 位，且包含大小写字母/数字/特殊字符中的至少 3 种");
+        // 口令复杂性：实时红边提示（规则说明在 placeholder 里，不单独占一行）
         input.addEventListener("input", () => {
-          weakHint.style.display = input.value && !pwComplexityOk(input.value) ? "" : "none";
+          const weak = input.value !== "" && !pwComplexityOk(input.value);
+          input.style.borderColor = weak ? "rgba(255,83,112,.55)" : "";
         });
-        parts.push(weakHint);
       }
       if (command.fields.some((f2) => f2.name === "key" && f2.type === "path")) {
         // 私钥状态校验：加密/记住/未加密 透明化提示
