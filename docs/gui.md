@@ -5,7 +5,7 @@
 ## 启动
 
 ```bash
-hashseal gui
+hashseal gui        # 或更短的别名：hashseal web
 ```
 
 终端会打印形如下面的地址（token 每次启动都不同）：

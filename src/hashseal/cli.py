@@ -1677,7 +1677,7 @@ def build_parser() -> argparse.ArgumentParser:
     ot.add_argument("ots_args", nargs=argparse.REMAINDER)
     ot.set_defaults(func=cmd_ots)
 
-    g = sub.add_parser("gui", help="启动本地 Web 界面（仅绑定 127.0.0.1）")
+    g = sub.add_parser("gui", aliases=["web"], help="启动本地 Web 界面（仅绑定 127.0.0.1）")
     g.add_argument("--port", type=int, default=0, help="端口（默认随机空闲端口）")
     g.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     g.add_argument(
