@@ -145,6 +145,21 @@ export function confirmModal({ title, message, confirmLabel = "继续", danger =
   });
 }
 
+/* ---------- 输入框内嵌复制按钮 ---------- */
+
+export function withCopyInside(input) {
+  const wrap = el("div", { class: "input-wrap" }, input);
+  wrap.append(el("button", {
+    class: "copy-inside", type: "button", title: "复制内容", "aria-label": "复制内容",
+    onclick: () => {
+      const value = (input.value || "").trim();
+      if (!value) { toast("输入为空，没有可复制的内容", "fail"); return; }
+      copyText(value);
+    },
+  }, icon("copy")));
+  return wrap;
+}
+
 /* ---------- 路径选择器 ---------- */
 
 const LAST_DIR_KEY = "hashseal.lastDir";
@@ -385,7 +400,7 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         type: "text", id: "f-" + f.name, placeholder: f.placeholder || "",
         value: f.default || "", autocomplete: "off", spellcheck: "false",
       });
-      control = el("div", { class: "field-row" }, input,
+      control = el("div", { class: "field-row" }, withCopyInside(input),
         el("button", {
           class: "btn btn-ghost btn-sm", type: "button",
           onclick: async () => {
@@ -423,7 +438,7 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       get = () => (values.length ? values.slice() : null);
     } else if (f.type === "password") {
       const input = el("input", { type: "password", id: "f-" + f.name, placeholder: f.placeholder || "", autocomplete: "current-password" });
-      control = input;
+      control = withCopyInside(input);
       get = () => input.value || null;
     } else if (f.type === "str") {
       const input = el("input", { type: "text", id: "f-" + f.name, placeholder: f.placeholder || "", autocomplete: "off", spellcheck: "false" });

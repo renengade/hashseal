@@ -2,7 +2,7 @@
 
 import { api, ApiFail, initToken, hasToken, runTask } from "./api.js";
 import {
-  el, icon, fmtBytes, fmtTime, shortPath, toast, copyText,
+  el, icon, fmtBytes, fmtTime, shortPath, toast, copyText, withCopyInside,
   openModal, confirmModal, pickPath, commandForm, taskResult, argvToCommand,
 } from "./ui.js";
 
@@ -400,6 +400,8 @@ function vaultCard() {
     value: defaultKeyPath, autocomplete: "off", spellcheck: "false",
   });
   const pwInput = el("input", { type: "password", placeholder: "私钥口令", "aria-label": "私钥口令", autocomplete: "current-password" });
+  const keyWrap = withCopyInside(keyInput);
+  const pwWrap = withCopyInside(pwInput);
   const list = el("div", { class: "chips", style: "margin-top:10px" });
 
   const refreshVault = async () => {
@@ -435,14 +437,14 @@ function vaultCard() {
     el("div", { class: "form-grid" },
       el("div", { class: "field" },
         el("label", { class: "field-label" }, el("span", {}, "私钥")),
-        el("div", { class: "field-row" }, keyInput,
+        el("div", { class: "field-row" }, keyWrap,
           el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => {
             const picked = await pickPath({ mode: "any", title: "选择私钥文件" });
             if (picked) keyInput.value = Array.isArray(picked) ? picked[0] : picked;
           } }, icon("folder"), "浏览…"))),
       el("div", { class: "field" },
         el("label", { class: "field-label" }, el("span", {}, "口令")),
-        pwInput),
+        pwWrap),
       el("div", { class: "form-actions", style: "margin-top:4px" }, unlockBtn)),
     el("div", { style: "margin-top:14px" },
       el("div", { class: "field-label" }, el("span", {}, "已记住的密钥")),
