@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.9
+
+### Changed
+
+- **撤销 Windows 安装器自动安装 OpenSSL**：企业环境可能将 OpenSSL 列入软件黑名单；
+  安装器改为仅检测并提示（普通签名/验证不需要，仅时间戳链校验需要）。
+  可用 WSL 侧或按公司政策手动安装。
+
+### Fixed
+
+- Windows 升级前自动停止运行中的 hashseal 进程，避免 `uv tool install --force`
+  因文件锁（`uv\tools\hashseal\Scripts` 拒绝访问）半失败；安装后校验 `hashseal.exe` 存在。
+
 ## 0.10.8
 
 ### Added

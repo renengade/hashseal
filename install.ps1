@@ -13,7 +13,6 @@
 #   HASHSEAL_API_URL=<url> 覆盖 latest release API
 #   HASHSEAL_SHA256=<hex>  校验下载包
 #   GITHUB_TOKEN=<token>   提高 GitHub API 速率限制
-#   HASHSEAL_NO_OPENSSL=1  跳过自动安装 OpenSSL（仅时间戳链校验需要；默认自动尝试）
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
@@ -63,59 +62,14 @@ function Resolve-Latest {
     throw "latest"
 }
 
-function Add-UserPath([string]$dir) {
-    if (-not (Test-Path $dir)) { return }
-    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($userPath -notlike "*$dir*") {
-        [Environment]::SetEnvironmentVariable("Path", "$dir;$userPath", "User")
-    }
-    if ($env:Path -notlike "*$dir*") {
-        $env:Path = "$dir;$env:Path"
-    }
-}
-
-function Ensure-OpenSSL {
-    if ($env:HASHSEAL_NO_OPENSSL -eq "1") {
-        Say "已按 HASHSEAL_NO_OPENSSL=1 跳过 OpenSSL（时间戳证书链校验将不可用）"
-        return
-    }
+function Show-OpenSSLStatus {
     if (Get-Command openssl -ErrorAction SilentlyContinue) {
         Say "OpenSSL: 已安装（时间戳证书链校验可用）"
         return
     }
-    $candidates = @(
-        (Join-Path $env:ProgramFiles "OpenSSL-Win64\bin"),
-        (Join-Path $env:ProgramFiles "OpenSSL-Win32\bin"),
-        "C:\Program Files\Git\usr\bin"
-    )
-    foreach ($dir in $candidates) {
-        if (Test-Path (Join-Path $dir "openssl.exe")) {
-            Add-UserPath $dir
-            if (Get-Command openssl -ErrorAction SilentlyContinue) {
-                Say "OpenSSL: 已找到并加入 PATH（$dir）"
-                return
-            }
-        }
-    }
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Say "未检测到 OpenSSL，且找不到 winget（仅时间戳链校验需要）。"
-        Say "可稍后手动安装: winget install ShiningLight.OpenSSL.Light"
-        return
-    }
-    Say "未检测到 OpenSSL（仅时间戳证书链校验需要），正在通过 winget 安装 ..."
-    Say "（如弹出 UAC 请允许；也可按 Ctrl+C 后设置 HASHSEAL_NO_OPENSSL=1 跳过）"
-    & winget install --id ShiningLight.OpenSSL.Light -e --silent --accept-source-agreements --accept-package-agreements
-    foreach ($dir in $candidates) {
-        if (Test-Path (Join-Path $dir "openssl.exe")) {
-            Add-UserPath $dir
-        }
-    }
-    if (Get-Command openssl -ErrorAction SilentlyContinue) {
-        Say "OpenSSL: 安装完成（时间戳证书链校验可用）"
-    } else {
-        Say "OpenSSL 自动安装未完成（可能需要管理员权限/网络）。"
-        Say "可稍后手动执行: winget install ShiningLight.OpenSSL.Light"
-    }
+    Say "未检测到 OpenSSL：仅影响时间戳的 TSA 证书链校验，普通签名/验证不需要。"
+    Say "需要可信时间戳时，请在允许的环境中安装 OpenSSL，或使用 WSL 侧 GUI / 跳过链校验。"
+    Say "（安装器不会自动安装 OpenSSL，避免与企业软件管控冲突。）"
 }
 
 if (-not (Get-Command tar -ErrorAction SilentlyContinue)) {
@@ -171,6 +125,22 @@ try {
     $Src = (Get-ChildItem $Tmp -Directory | Select-Object -First 1).FullName
     if (-not $Src) { Die "源码包结构异常" }
 
+    # Windows 文件锁：运行中的旧 hashseal 会导致 uv tool install --force 失败
+    $running = @(Get-CimInstance Win32_Process -Filter "Name = 'hashseal.exe'" -ErrorAction SilentlyContinue)
+    if (-not $running) {
+        $running = @(
+            Get-CimInstance Win32_Process -Filter "Name like 'python%'" -ErrorAction SilentlyContinue |
+                Where-Object { $_.CommandLine -match 'hashseal' }
+        )
+    }
+    if ($running.Count -gt 0) {
+        Say "检测到运行中的 hashseal 进程，正在停止以完成升级 ..."
+        foreach ($proc in $running) {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Seconds 1
+    }
+
     Say "安装 hashseal ..."
     uv tool install --force $Src
     if ($LASTEXITCODE -ne 0) { Die "uv tool install 失败" }
@@ -190,6 +160,10 @@ if ($userPath -notlike "*$BinDir*") {
     Say "已把 $BinDir 加入用户 PATH（重开终端生效）"
 }
 
+if (-not (Test-Path (Join-Path $BinDir "hashseal.exe"))) {
+    Die "安装后未找到 hashseal.exe（$BinDir）。请重试；若仍失败请运行 uv tool install --force 并查看输出"
+}
+
 $hashseal = Get-Command hashseal -ErrorAction SilentlyContinue
 if ($hashseal) {
     Say ("✅ 安装完成: " + $hashseal.Source)
@@ -199,7 +173,7 @@ if ($hashseal) {
 }
 
 Say ""
-Ensure-OpenSSL
+Show-OpenSSLStatus
 Say ""
 Say "启动界面: hashseal web        （或 hashseal gui）"
 Say "升级: 重新执行本脚本"

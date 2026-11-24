@@ -87,7 +87,7 @@ WSL 与 Windows 是**两套独立安装**（各自的密钥、配置、审计目
 
 - `sign --timestamp`、`timestamp`、`renew` 会给出可执行提示（不会静默通过）；
 - 验证时间戳（`verify --tsr`）严格模式同样失败并提示安装；
-- 安装：`winget install ShiningLight.OpenSSL.Light`，或使用 Git for Windows 自带的 openssl 并加入 PATH；
+- 如公司政策允许：`winget install ShiningLight.OpenSSL.Light`，或使用 Git for Windows 自带的 openssl 并加入 PATH；
 - 明确接受风险时可加 `--allow-unverified-chain`（只跳过链校验，令牌内容/签名/摘要仍校验）。
 
 Windows 原生安装对 `D:\` 本地盘的大文件哈希比 WSL `/mnt/*`（9P）快 4–5 倍。

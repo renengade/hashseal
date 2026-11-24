@@ -17,8 +17,9 @@ GUI 中「申请可信时间戳」在 OpenSSL 可用时**默认勾选**（不可
 - 严格模式（默认）在未安装 openssl 时**失败并给出安装指引**（fail-closed）；
 - 非严格模式（`--allow-unverified-chain`）只跳过链校验，
   令牌内容、CMS 签名、`message_digest` 仍会校验，并明确标记「证书链未校验」；
-- Windows 安装：`winget install ShiningLight.OpenSSL.Light`，或用 Git for Windows 自带的
-  openssl 加入 PATH。
+- Windows：按公司政策决定是否安装（`winget install ShiningLight.OpenSSL.Light` 或
+  Git for Windows 自带）；安装器不会自动装。若被禁用，可改用 WSL 侧（自带 openssl）
+  完成时间戳，或跳过链校验。
 
 ## 离线验证
 

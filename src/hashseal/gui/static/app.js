@@ -272,8 +272,8 @@ function pageCommands(page, sectionId) {
     content.append(el("div", { class: "note-bar" }, icon("alert"),
       el("span", {},
         "未检测到 OpenSSL：仅影响时间戳的 TSA 证书链校验，普通签名/验证不需要它。" +
-        "签名表单已默认关闭时间戳；需要可信时间戳时安装 OpenSSL" +
-        "（Windows: winget install ShiningLight.OpenSSL.Light）后刷新页面即可启用。")));
+        "签名表单已默认关闭时间戳；需要可信时间戳时，请在允许的环境中安装 OpenSSL" +
+        "（或使用 WSL 侧），重启服务并刷新页面即可启用。")));
   }
 
   const tabs = el("div", { class: "cmd-tabs" });
