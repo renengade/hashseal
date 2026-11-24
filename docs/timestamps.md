@@ -21,6 +21,20 @@ GUI 中「申请可信时间戳」在 OpenSSL 可用时**默认勾选**（不可
   Git for Windows 自带）；安装器不会自动装。若被禁用，可改用 WSL 侧（自带 openssl）
   完成时间戳，或跳过链校验。
 
+## 为什么 TSA 是 HTTP，还需要本机 OpenSSL？
+
+HTTP 只是**与 TSA 的传输方式**。TSA 返回的令牌里带有 TSA 证书与 CMS 签名；
+hashseal 需要在本机完成：
+
+1. 令牌内容/摘要一致性（`message_digest`、nonce）；
+2. CMS 签名验证（cryptography）；
+3. **证书链验证**：TSA 证书 → 中间证书 → 可信根，以及 `timeStamping` EKU、有效期等。
+
+第 3 步目前调用本机 `openssl ts -verify` 完成——这是**本地验证工具**，不是访问 TSA 所需。
+没有 OpenSSL 时：普通签名/验证不受影响；时间戳步骤会失败（fail-closed），或显式
+`--allow-unverified-chain` 跳过链校验。企业环境禁用 OpenSSL 时，可在 WSL 侧完成时间戳，
+或跳过时间戳。
+
 ## 离线验证
 
 验证不需要联网，令牌自带证书链；有 `openssl` 时本地完成链校验。

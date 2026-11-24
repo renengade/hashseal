@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.10
+
+### Changed
+
+- 主启动命令改为 **`hashseal web`**（`hashseal gui` 保留为兼容别名）。
+- GUI 导航简化：「目录与分发」→「分发」，「时间戳与证明」→「时间戳」。
+- 文件浏览默认放开整机：WSL/Linux 可浏览 `/`，Windows 列出所有盘符；
+  `--restrict-roots` 可收紧为「主目录 + 当前目录 + --root」白名单。
+- 修复设置页「配置说明」链接（指向「审计与配置」文档页）。
+
+### Docs
+
+- 说明「TSA 是 HTTP，为何仍需本机 OpenSSL」：HTTP 是传输，OpenSSL 用于本地证书链校验。
+- 同步 web 命令、导航名称、根目录策略与演示命令。
+
 ## 0.10.9
 
 ### Changed

@@ -19,6 +19,8 @@ WAIT = 30.0
 class GuiTestBase(unittest.TestCase):
     """启动一个真实服务（127.0.0.1 随机端口），roots 指向临时目录。"""
 
+    RESTRICT_ROOTS = True  # 安全用例默认开启限制；系统根目录用例可覆盖
+
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="hashseal-gui-test-"))
         self.addCleanup(shutil.rmtree, self.tmp, True)
@@ -30,6 +32,7 @@ class GuiTestBase(unittest.TestCase):
                 read_only=False,
                 idle_timeout_minutes=0,
                 vault_timeout_minutes=0,
+                restrict_roots=self.RESTRICT_ROOTS,
             )
         )
         self.port = self.server.port

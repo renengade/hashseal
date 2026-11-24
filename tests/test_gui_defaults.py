@@ -39,6 +39,7 @@ class PathDefaultsTest(unittest.TestCase):
                 roots=[self.tmp],
                 idle_timeout_minutes=0,
                 vault_timeout_minutes=0,
+                restrict_roots=True,
             )
         )
         self.base = f"http://127.0.0.1:{self.server.port}"

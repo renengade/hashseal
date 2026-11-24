@@ -17,13 +17,13 @@ const state = {
 
 const EYEBROW = {
   "": "OVERVIEW", verify: "VERIFY", sign: "SIGN", keys: "KEYS",
-  dirs: "DIRECTORIES", stamps: "TIMESTAMPS", tools: "TOOLS",
+  dirs: "DISTRIBUTE", stamps: "TIMESTAMPS", tools: "TOOLS",
   audit: "AUDIT", settings: "SETTINGS",
 };
 
 const SECTION_LABEL = {
-  verify: "验证", sign: "签名", keys: "密钥", dirs: "目录与分发",
-  stamps: "时间戳与证明", tools: "工具", settings: "设置",
+  verify: "验证", sign: "签名", keys: "密钥", dirs: "分发",
+  stamps: "时间戳", tools: "工具", settings: "设置",
 };
 
 /* ---------- 启动 ---------- */
@@ -507,7 +507,7 @@ function pageSettings(page) {
       el("div", { class: "k" }, "路径"), el("div", { class: "v mono" }, state.status.config_path),
       el("div", { class: "k" }, "生效配置"), el("div", { class: "v" }, "")),
     cfgKv,
-    el("div", { style: "margin-top:12px" }, el("a", { href: "https://renengade.github.io/hashseal/config", target: "_blank", rel: "noreferrer" }, "配置说明（docs）↗"))));
+    el("div", { style: "margin-top:12px" }, el("a", { href: "https://renengade.github.io/hashseal/audit/", target: "_blank", rel: "noreferrer" }, "配置说明（docs）↗"))));
 
   content.append(el("div", { class: "card" },
     el("div", { class: "card-title", style: "margin-bottom:8px" }, "可访问的根目录"),

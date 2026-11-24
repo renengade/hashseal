@@ -1,6 +1,6 @@
 # GUI 界面
 
-`hashseal gui`（别名 `hashseal web`）在 `127.0.0.1` 启动一个零依赖的本地 Web 服务，
+`hashseal web`（`hashseal gui` 为兼容别名）在 `127.0.0.1` 启动一个零依赖的本地 Web 服务，
 用浏览器完成与 CLI 相同的操作。GUI 与 CLI 共用同一套核心代码、密钥、配置与审计日志，两者可以同时使用。
 
 > 平台策略：**Windows 是主要目标与主验证平台**，但代码保持跨平台——
@@ -10,7 +10,7 @@
 ## 启动
 
 ```bash
-hashseal gui        # 或 hashseal web
+hashseal web
 ```
 
 终端打印地址（token 每次启动都不同）：
@@ -33,10 +33,12 @@ hashseal GUI 已启动（仅本机）
 | `--idle-timeout MIN` | 闲置自动退出分钟数（默认 30，0 = 不退出） |
 | `--vault-timeout MIN` | 口令闲置锁定分钟数（默认 0 = 记住到退出） |
 
-默认根目录 = **用户主目录 + 当前目录**。WSL 访问 Windows 文件需显式加：
+文件浏览默认放开**整个文件系统**：WSL/Linux 可浏览 `/`（含 `/mnt/*`），
+Windows 会列出所有存在的盘符（`C:\`、`D:\` …）；主目录与当前目录作为默认快捷位置。
+如需收紧为白名单，用 `--restrict-roots`（此时仅主目录/当前目录/`--root` 可访问）。
 
 ```bash
-hashseal gui --root /mnt/c/Users/你的用户名
+hashseal web --restrict-roots --root /data     # 仅在明确需要时收紧
 ```
 
 ### 升级
@@ -61,8 +63,8 @@ WSL 与 Windows 是两套独立安装，需分别升级（`hashseal --version` �
 | 密钥 | 生成密钥对、公钥指纹、口令保管状态 |
 | 签名 | 签名文件/目录，默认勾选可信时间戳（无 OpenSSL 时默认关闭并提示） |
 | 验证 | 验证签名 / 快速检查（不联网） |
-| 时间戳与证明 | 申请/续期时间戳、in-toto 证明生成与验证 |
-| 目录与分发 | 清单、对比、bundle 打包/解包、SBOM |
+| 时间戳 | 申请/续期时间戳、in-toto 证明生成与验证 |
+| 分发 | 清单、对比、bundle 打包/解包、SBOM |
 | 工具 | SHA-256、查看 `.sig`/`.tsr` 元数据、OpenTimestamps |
 | 审计 | 查看/筛选审计（GUI 记录 `source=gui`） |
 | 设置 | 配置展示、生成 TOML 模板、退出服务 |
@@ -115,7 +117,7 @@ http://127.0.0.1:53421/#token=XXXX&next=%2Fkeys
 - 只绑定 `127.0.0.1`，每次启动 32 字节随机 token（URL fragment 携带，不进服务器日志）；
 - 所有 API 校验 Host / Origin / `Sec-Fetch-Site`，防 DNS rebinding 与跨站调用；
 - 严格 CSP，无外链/无内联脚本；静态资源白名单；
-- 所有路径必须在 `--root` 内；符号链接逃逸被拒绝；
+- 默认允许访问整机文件（本地 token 保护）；`--restrict-roots` 时仅允许 roots 内，符号链接同样受限；
 - 不做浏览器上传，私钥内容永不进入浏览器；
 - 只读模式在服务端拦截写操作，不依赖前端隐藏按钮；
 - 闲置自动退出（默认 30 分钟）。

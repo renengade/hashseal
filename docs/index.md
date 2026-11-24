@@ -32,7 +32,7 @@ hashseal verify dist/
 ## 两种用法
 
 ```bash
-hashseal gui        # 本地浏览器界面（别名：hashseal web）
+hashseal web        # 本地浏览器界面（hashseal gui 为兼容别名）
 hashseal sign ...   # CLI / 脚本 / CI
 ```
 

@@ -25,14 +25,21 @@ A：不能。它只计算公钥指纹；验证目录用 `verify DIR`。
 A：可以同时使用，共用同一套密钥/配置/审计。避免对同一文件同时写 `.sig`；
 GUI 的任务是串行执行的。
 
-**Q：`hashseal web` 和 `hashseal gui` 有区别吗？**
-A：没有，`web` 是 `gui` 的别名。旧版本（< 0.10.1）没有 `web`，升级后可用。
+**Q：启动命令是 `hashseal web` 还是 `hashseal gui`？**
+A：推荐 `hashseal web`；`hashseal gui` 保留为兼容别名（旧脚本/习惯仍可用）。
 
 **Q：浏览器提示 401 会话无效？**
 A：服务重启后 token 会变化。回终端复制新地址（含 `#token=…`）重新打开。
 
-**Q：GUI 提示路径不在允许的根目录？**
-A：启动时加 `--root <目录>`，可多次指定。
+**Q：GUI 为什么能浏览整个磁盘？可以限制吗？**
+A：默认放开整机（本地 token 保护），方便选择任意目录；启动时加
+`--restrict-roots` 即收紧为「主目录 + 当前目录 + `--root`」白名单。
+
+**Q：TSA 是 HTTP 的，为什么还需要本机 OpenSSL？**
+A：HTTP 只影响与 TSA 的传输；TSA 返回的令牌带有 TSA 证书与签名。hashseal 需要在本机
+验证「令牌签名 + 证书链是否链到可信根（含 timeStamping EKU、有效期）」，
+这一步目前调用本机 `openssl` 完成（不是访问 TSA 需要它）。没有它时普通签名/验证照常，
+只跳过时间戳或明确使用 `--allow-unverified-chain`。
 
 **Q：Windows 上签名报错「未安装 openssl」，必须安装吗？**
 A：不是必须。只有**时间戳的 TSA 证书链校验**需要它；普通签名/验证、目录、bundle、

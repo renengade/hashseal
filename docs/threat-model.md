@@ -54,7 +54,8 @@ B：核对公钥指纹（独立渠道）→ verify
 | DNS rebinding | 校验 Host 必须为 `127.0.0.1:<port>` / `localhost:<port>` |
 | CSRF | JSON Content-Type + 自定义 token 头 + Origin/Sec-Fetch-Site 校验，无 CORS |
 | XSS | 严格 CSP、无内联脚本/样式、用户数据只用 textContent |
-| 路径穿越 | `--root` 白名单 + `resolve()` 后校验，拒绝越界符号链接 |
+| 路径穿越（限制模式） | `--restrict-roots` 时仅允许 roots 内；`resolve()` 后校验、拒绝越界符号链接 |
+| 默认整机可浏览 | 依赖本地 token/同源校验；如需最小权限请用 `--restrict-roots` |
 | 误操作 | 危险选项标红 + 二次确认；默认拒绝覆盖 |
 | 只读绕过 | 服务端按命令白名单拦截写操作 |
 | 口令泄露 | 仅进程内存；不写盘/日志/审计；可一键锁定、闲置锁定 |

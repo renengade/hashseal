@@ -71,6 +71,7 @@ class GuiSettings:
     idle_timeout_minutes: float = 30.0
     vault_timeout_minutes: float = 0.0
     config: dict = field(default_factory=dict)
+    restrict_roots: bool = False  # 默认放开整机文件系统（token 保护）；True 则仅 roots
 
 
 class GuiServer(ThreadingHTTPServer):
@@ -283,6 +284,7 @@ class GuiHandler(BaseHTTPRequestHandler):
             "config_path": str(config_path()),
             "audit_path": str(audit_path()),
             "vault": {"keys": server.vault.keys()},
+            "restrict_roots": server.settings.restrict_roots,
             "idle_timeout_minutes": server.settings.idle_timeout_minutes,
             "vault_timeout_minutes": server.settings.vault_timeout_minutes,
             "config": cfg,
@@ -560,6 +562,24 @@ def _default_roots(extra: list[Path]) -> list[Path]:
     return roots
 
 
+def _system_roots() -> list[Path]:
+    """系统级浏览入口：POSIX 为 /，Windows 为所有存在的盘符。"""
+    roots: list[Path] = []
+    if os.name == "nt":
+        import string
+
+        for letter in string.ascii_uppercase:
+            drive = Path(f"{letter}:\\")
+            try:
+                if drive.exists():
+                    roots.append(drive)
+            except OSError:
+                continue
+    else:
+        roots.append(Path("/"))
+    return roots
+
+
 def _is_wsl() -> bool:
     if os.environ.get("WSL_DISTRO_NAME"):
         return True
@@ -608,7 +628,12 @@ def build(
 ) -> tuple[GuiServer, str, str]:
     """创建服务器（不进入主循环），返回 (server, url, token)。供 serve/测试复用。"""
     token = new_token()
-    roots = RootSet(_default_roots(list(settings.roots)))
+    root_list = _default_roots(list(settings.roots))
+    if not settings.restrict_roots:
+        for system_root in _system_roots():
+            if system_root not in root_list:
+                root_list.append(system_root)
+    roots = RootSet(root_list)
     vault = PasswordVault()
     tasks = TaskQueue(vault=vault, config=settings.config)
     try:

@@ -44,15 +44,15 @@ hashseal verify app.py
 hashseal sign dist/ --timestamp
 hashseal verify dist/
 
-# 不喜欢命令行？启动本地 Web 界面（等价别名：hashseal web）
-hashseal gui
+# 不喜欢命令行？启动本地 Web 界面
+hashseal web
 ```
 
 ## 命令速查
 
 | 命令 | 用途 |
 | --- | --- |
-| `gui` / `web` | 本地 Web 界面（浏览器操作，与 CLI 同功能） |
+| `web` | 本地 Web 界面（浏览器操作，与 CLI 同功能；`gui` 为兼容别名） |
 | `keygen` | 生成密钥对 |
 | `sign` | 签名文件/目录，可选时间戳 |
 | `verify` | 验证签名/时间戳/目录完整性 |

@@ -197,3 +197,17 @@ class ApiValidationTest(GuiTestBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SystemRootsTest(GuiTestBase):
+    RESTRICT_ROOTS = False  # 默认放开：可浏览文件系统根 / 所有盘符
+
+    def test_can_browse_system_root(self) -> None:
+        import urllib.parse
+
+        target = "C:\\" if os.name == "nt" else "/"
+        status, payload = self.request(
+            "/api/browse?path=" + urllib.parse.quote(target)
+        )
+        self.assertEqual(status, 200, payload)
+        self.assertTrue(payload["entries"])

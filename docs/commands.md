@@ -12,21 +12,22 @@ hashseal -V / --version      # 版本
 
 ---
 
-## gui / web
+## web
 
-启动本地 Web 界面（`web` 是 `gui` 的别名）。完整说明见 [GUI 界面](gui.md)。
+启动本地 Web 界面（`gui` 为兼容别名）。完整说明见 [GUI 界面](gui.md)。
 
 ```
-hashseal gui [--port N] [--no-browser] [--root PATH ...] [--read-only]
-             [--idle-timeout MIN] [--vault-timeout MIN]
+hashseal web [--port N] [--no-browser] [--root PATH ...] [--read-only]
+             [--restrict-roots] [--idle-timeout MIN] [--vault-timeout MIN]
 ```
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `--port` | 随机空闲端口 | 固定端口 |
 | `--no-browser` | 自动打开 | 只打印地址 |
-| `--root` | 主目录 + 当前目录 | 允许访问的根目录（可多次） |
+| `--root` | 主目录 + 当前目录 | 额外的浏览起点（限制模式下为白名单，可多次） |
 | `--read-only` | 关 | 禁用签名/生成/解包等写操作 |
+| `--restrict-roots` | 关 | 仅允许主目录/当前目录/`--root`；默认放开整个文件系统（WSL `/`、Windows 所有盘符） |
 | `--idle-timeout` | `30` | 闲置自动退出分钟数（0 = 不退出） |
 | `--vault-timeout` | `0` | 口令闲置锁定分钟数（0 = 记住到退出） |
 

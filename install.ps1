@@ -175,6 +175,6 @@ if ($hashseal) {
 Say ""
 Show-OpenSSLStatus
 Say ""
-Say "启动界面: hashseal web        （或 hashseal gui）"
+Say "启动界面: hashseal web"
 Say "升级: 重新执行本脚本"
 Say "卸载: uv tool uninstall hashseal"
