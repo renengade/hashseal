@@ -6,6 +6,11 @@ build/
 dist/
 .ruff_cache/
 
+# 运行时生成的产物（防 git add -A 误扫）
+/attestation.json
+/sbom.cdx.json
+/MANIFEST.sha256
+
 # 用户自己的密钥与产物（绝不入库）
 *private*.pem
 *public*.pem
