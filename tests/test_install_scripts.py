@@ -14,7 +14,9 @@ class InstallScriptTest(unittest.TestCase):
     def test_install_sh_syntax(self) -> None:
         sh = shutil.which("dash") or shutil.which("sh")
         assert sh
-        result = subprocess.run([sh, "-n", str(ROOT / "install.sh")], check=False, capture_output=True)
+        result = subprocess.run(
+            [sh, "-n", str(ROOT / "install.sh")], check=False, capture_output=True
+        )
         self.assertEqual(result.returncode, 0, result.stderr.decode())
 
     def test_install_ps1_no_bom_and_crlf(self) -> None:
@@ -37,17 +39,22 @@ class InstallScriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "install.ps1"
             dest.write_bytes((ROOT / "install.ps1").read_bytes())
-            win_path = subprocess.run(
-                ["wslpath", "-w", str(dest)], check=False, capture_output=True, text=True
-            )
-            if win_path.returncode != 0:
-                self.skipTest("wslpath 不可用（非 WSL 环境）")
+            # pwsh(Linux) 可直接读 Linux 路径；WSL→Windows 需 wslpath 转换
+            path_arg = str(dest)
+            if shutil.which("wslpath"):
+                win_path = subprocess.run(
+                    ["wslpath", "-w", str(dest)], check=False, capture_output=True, text=True
+                )
+                if win_path.returncode == 0 and win_path.stdout.strip():
+                    path_arg = win_path.stdout.strip()
             cmd = (
                 "try { $t = Get-Content -Raw -Encoding UTF8 -LiteralPath "
-                f"'{win_path.stdout.strip()}'"
+                f"'{path_arg}'"
                 "; [void][scriptblock]::Create($t); 'OK' } catch { Write-Error $_.Exception.Message; exit 1 }"
             )
-            result = subprocess.run([exe, "-NoProfile", "-Command", cmd], check=False, capture_output=True)
+            result = subprocess.run(
+                [exe, "-NoProfile", "-Command", cmd], check=False, capture_output=True
+            )
             self.assertEqual(result.returncode, 0, result.stdout.decode() + result.stderr.decode())
 
 
