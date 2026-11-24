@@ -45,6 +45,7 @@ async function boot() {
   }
   document.getElementById("side-ver").textContent = "v" + state.status.version;
   document.getElementById("vault-chip").addEventListener("click", lockAllPasswords);
+  document.getElementById("vault-chip").style.display = "none";
   updateVaultChip();
   route();
 }
@@ -361,8 +362,13 @@ function updateVaultChip() {
   api.vault().then(({ keys }) => {
     state.status.vault = { keys };
     chip.textContent = "";
-    chip.append(icon(keys.length ? "unlock" : "lock"),
-      el("span", {}, keys.length ? `已记住 ${keys.length} 个口令` : "未记住口令"));
+    if (!keys.length) {
+      chip.style.display = "none"; // 没有记住口令时不展示
+      return;
+    }
+    chip.style.display = "";
+    chip.append(icon("unlock"),
+      el("span", {}, `已记住 ${keys.length} 个口令`));
   }).catch(() => {});
 }
 

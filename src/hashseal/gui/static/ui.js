@@ -385,6 +385,7 @@ const NUM_TYPES = new Set(["int", "float"]);
 export function commandForm(command, { onSubmit, submitLabel } = {}) {
   const getters = {};
   const dangerFields = [];
+  const confirmState = { value: "" }; // keygen 二次确认口令
 
   const fieldNode = (f) => {
     const wrap = el("div", { class: "field" + (f.danger ? " danger-field" : "") });
@@ -440,6 +441,35 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       const input = el("input", { type: "password", id: "f-" + f.name, placeholder: f.placeholder || "", autocomplete: "current-password" });
       control = withCopyInside(input);
       get = () => input.value || null;
+      if (command.name === "keygen") {
+        // 设置新口令：二次确认，两次输入不一致时阻止提交
+        const confirmId = "f-" + f.name + "-confirm";
+        const confirmInput = el("input", {
+          type: "password", id: confirmId, placeholder: "再次输入口令",
+          autocomplete: "new-password",
+        });
+        const hint = el("div", {
+          class: "field-help", style: "color:var(--danger-text);display:none",
+        }, "两次输入的口令不一致");
+        const check = () => {
+          confirmState.value = confirmInput.value;
+          const mismatch =
+            (confirmInput.value !== "" && confirmInput.value !== input.value) ||
+            (confirmInput.value === "" && input.value !== "");
+          hint.style.display = mismatch ? "" : "none";
+          confirmInput.style.borderColor = mismatch ? "rgba(255,83,112,.55)" : "";
+        };
+        input.addEventListener("input", check);
+        confirmInput.addEventListener("input", check);
+        control = el(
+          "div",
+          {},
+          withCopyInside(input),
+          el("div", { class: "field", style: "margin-top:8px" },
+            el("label", { class: "field-label", for: confirmId }, el("span", {}, "确认口令")),
+            confirmInput,
+            hint));
+      }
     } else if (f.type === "str") {
       const input = el("input", { type: "text", id: "f-" + f.name, placeholder: f.placeholder || "", autocomplete: "off", spellcheck: "false" });
       control = input;
@@ -514,6 +544,13 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       for (const f of command.fields) {
         const value = getters[f.name]();
         if (value !== null && value !== undefined && value !== false && value !== "") options[f.name] = value;
+      }
+      if (command.name === "keygen") {
+        const pw = options.password || "";
+        if (pw !== confirmState.value) {
+          toast(pw && !confirmState.value ? "请再次输入口令确认" : "两次输入的口令不一致", "fail");
+          return;
+        }
       }
       if (dangerFields.some((fn) => fn())) {
         const okGo = await confirmModal({
