@@ -502,7 +502,8 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     return wrap;
   };
 
-  const basic = command.fields.filter((f) => !f.advanced);
+  const basic = command.fields.filter((f) => !f.advanced && !f.inline);
+  const inlineFields = command.fields.filter((f) => f.inline && !f.advanced);
   const advanced = command.fields.filter((f) => f.advanced);
   const grid = el("div", { class: "form-grid" }, basic.map(fieldNode));
   const form = el("form", {
@@ -527,6 +528,10 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     },
   });
   form.append(grid);
+  if (inlineFields.length) {
+    // 横排区：常用可选的开关/输入并排展示，不折叠
+    form.append(el("div", { class: "grid-2" }, inlineFields.map(fieldNode)));
+  }
   if (advanced.length) {
     const names = advanced.slice(0, 3).map((f) => f.label || f.name).join("、");
     form.append(el("details", { class: "adv" },

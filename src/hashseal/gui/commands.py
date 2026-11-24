@@ -35,6 +35,7 @@ class Field:
     danger: bool = False
     placeholder: str = ""
     gui_only: bool = False  # 不进入 argv（password/remember）
+    inline: bool = False  # 横排展示、不折叠进高级选项
 
 
 @dataclass(frozen=True)
@@ -247,17 +248,17 @@ _COMMAND_LIST: list[Command] = [
                 label="署名",
                 placeholder="姓名 <email>",
                 help="纳入签名，防止冒用",
-                advanced=True,
+                inline=True,
             ),
             _f(name="timestamp", type="bool", flag="timestamp", label="申请可信时间戳"),
-            _f(name="force", type="bool", flag="force", label="覆盖已有签名", advanced=True),
+            _f(name="force", type="bool", flag="force", label="覆盖已有签名", inline=True),
             _f(
                 name="sig",
                 type="path",
                 flag="sig",
                 label="签名输出路径",
                 direction="out",
-                advanced=True,
+                inline=True,
                 help="仅单文件/单目录可用",
             ),
             _f(
@@ -266,7 +267,7 @@ _COMMAND_LIST: list[Command] = [
                 flag="tsr",
                 label="时间戳输出路径",
                 direction="out",
-                advanced=True,
+                inline=True,
             ),
             _f(
                 name="tsa",
@@ -346,8 +347,20 @@ _COMMAND_LIST: list[Command] = [
                 gui_only=True,
                 help="留空不加密（不推荐）；≥8 字符",
             ),
-            _f(name="remember", type="bool", label="记住口令直到退出", gui_only=True),
-            _f(name="force", type="bool", flag="force", label="覆盖已有密钥", advanced=True),
+            _f(
+                name="remember",
+                type="bool",
+                label="记住口令直到退出",
+                gui_only=True,
+                inline=True,
+            ),
+            _f(
+                name="force",
+                type="bool",
+                flag="force",
+                label="覆盖已有密钥",
+                inline=True,
+            ),
         ),
     ),
     Command(
@@ -1022,6 +1035,7 @@ def specs_for_frontend(
                     "max": f.max,
                     "danger": f.danger,
                     "placeholder": f.placeholder,
+                    "inline": f.inline,
                 }
             )
         out.append(

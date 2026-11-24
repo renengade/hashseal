@@ -44,6 +44,7 @@ async function boot() {
     return;
   }
   document.getElementById("side-ver").textContent = "v" + state.status.version;
+  document.getElementById("vault-chip").addEventListener("click", lockAllPasswords);
   updateVaultChip();
   route();
 }
@@ -286,10 +287,6 @@ function pageCommands(page, sectionId) {
   content.append(tabs, cardBox);
   page.append(content);
   renderCard();
-
-  if (sectionId === "keys") {
-    content.insertBefore(vaultCard(), tabs);
-  }
 }
 
 function commandCard(cmd) {
@@ -369,88 +366,19 @@ function updateVaultChip() {
   }).catch(() => {});
 }
 
-function vaultCard() {
-  const card = el("div", { class: "card" },
-    el("div", { class: "card-head" },
-      el("div", { class: "card-title" }, "口令保管"),
-      el("button", {
-        class: "btn btn-ghost btn-sm", type: "button",
-        onclick: async () => {
-          const ok = await confirmModal({
-            title: "锁定全部口令",
-            message: "将清除本进程记住的所有私钥口令。之后的加密私钥操作需要重新输入。",
-            confirmLabel: "锁定",
-            danger: true,
-          });
-          if (!ok) return;
-          await api.lock();
-          toast("已锁定", "ok");
-          refreshVault();
-        },
-      }, icon("lock"), "全部锁定")),
-    el("p", { class: "card-desc" }, "口令只保存在本进程内存中，绝不写盘；退出程序即清空。"));
-
-  // 预填默认私钥路径（与 keygen 表单同一套服务端默认值：配置 key 优先 → 启动目录/hashseal_private.pem）
-  const keygenSpec = state.commands.get("keygen");
-  const defaultKeyPath = keygenSpec
-    ? (keygenSpec.fields.find((f) => f.name === "private") || {}).default || ""
-    : "";
-  const keyInput = el("input", {
-    type: "text", placeholder: "私钥路径", "aria-label": "私钥路径",
-    value: defaultKeyPath, autocomplete: "off", spellcheck: "false",
+async function lockAllPasswords() {
+  const keys = (state.status && state.status.vault && state.status.vault.keys) || [];
+  if (!keys.length) { toast("当前没有记住的口令"); return; }
+  const ok = await confirmModal({
+    title: "锁定全部口令",
+    message: `将清除本进程记住的 ${keys.length} 个私钥口令；之后的加密私钥操作需要重新输入。`,
+    confirmLabel: "锁定",
+    danger: true,
   });
-  const pwInput = el("input", { type: "password", placeholder: "私钥口令", "aria-label": "私钥口令", autocomplete: "current-password" });
-  const keyWrap = withCopyInside(keyInput);
-  const pwWrap = withCopyInside(pwInput);
-  const list = el("div", { class: "chips", style: "margin-top:10px" });
-
-  const refreshVault = async () => {
-    try {
-      const { keys } = await api.vault();
-      list.textContent = "";
-      if (!keys.length) list.append(el("span", { class: "field-help" }, "尚未记住任何口令"));
-      for (const key of keys) {
-        list.append(el("span", { class: "chip" }, shortPath(key, 40),
-          el("button", { class: "chip-x", type: "button", title: "清除", onclick: async () => { await api.lock(key); refreshVault(); updateVaultChip(); } }, icon("x"))));
-      }
-    } catch { /* ignore */ }
-  };
-
-  const unlockBtn = el("button", {
-    class: "btn btn-primary btn-sm", type: "button",
-    onclick: async () => {
-      const key = keyInput.value.trim();
-      if (!key || !pwInput.value) { toast("请填写私钥路径与口令", "fail"); return; }
-      try {
-        const res = await api.unlock(key, pwInput.value);
-        pwInput.value = "";
-        toast("已解锁：" + res.fingerprint, "ok");
-        refreshVault();
-        updateVaultChip();
-      } catch (err) {
-        toast(err instanceof ApiFail ? err.message : "解锁失败", "fail");
-      }
-    },
-  }, "解锁并记住");
-
-  card.append(
-    el("div", { class: "form-grid" },
-      el("div", { class: "field" },
-        el("label", { class: "field-label" }, el("span", {}, "私钥")),
-        el("div", { class: "field-row" }, keyWrap,
-          el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => {
-            const picked = await pickPath({ mode: "any", title: "选择私钥文件" });
-            if (picked) keyInput.value = Array.isArray(picked) ? picked[0] : picked;
-          } }, icon("folder"), "浏览…"))),
-      el("div", { class: "field" },
-        el("label", { class: "field-label" }, el("span", {}, "口令")),
-        pwWrap),
-      el("div", { class: "form-actions", style: "margin-top:4px" }, unlockBtn)),
-    el("div", { style: "margin-top:14px" },
-      el("div", { class: "field-label" }, el("span", {}, "已记住的密钥")),
-      list));
-  refreshVault();
-  return card;
+  if (!ok) return;
+  await api.lock();
+  toast("已锁定", "ok");
+  updateVaultChip();
 }
 
 /* ---------- 审计 ---------- */
