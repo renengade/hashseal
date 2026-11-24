@@ -224,14 +224,19 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 .card-desc { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
 .card.flowing { box-shadow: var(--shadow), var(--inner-highlight); }
 
-/* 输入框内嵌复制按钮（参考 GitHub API key 的 Copy 样式） */
+/* 输入框内嵌操作按钮（复制 / 眼睛，参考 GitHub API key 样式） */
 .input-wrap { position: relative; flex: 1; min-width: 0; }
-.input-wrap input { width: 100%; padding-right: 40px; }
-.copy-inside {
+.input-wrap input { width: 100%; padding-right: 44px; }
+.input-wrap.dual input { padding-right: 80px; }
+.input-actions {
   position: absolute;
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+}
+.copy-inside {
   display: inline-flex;
   align-items: center;
   justify-content: center;

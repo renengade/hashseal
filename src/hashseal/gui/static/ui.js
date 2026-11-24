@@ -147,16 +147,32 @@ export function confirmModal({ title, message, confirmLabel = "继续", danger =
 
 /* ---------- 输入框内嵌复制按钮 ---------- */
 
-export function withCopyInside(input) {
+export function withCopyInside(input, { secret = false, copy = true } = {}) {
   const wrap = el("div", { class: "input-wrap" }, input);
-  wrap.append(el("button", {
-    class: "copy-inside", type: "button", title: "复制内容", "aria-label": "复制内容",
-    onclick: () => {
-      const value = (input.value || "").trim();
-      if (!value) { toast("输入为空，没有可复制的内容", "fail"); return; }
-      copyText(value);
-    },
-  }, icon("copy")));
+  const actions = el("div", { class: "input-actions" });
+  if (secret) {
+    const eye = el("button", {
+      class: "copy-inside", type: "button", title: "显示/隐藏口令", "aria-label": "显示或隐藏口令",
+      onclick: () => {
+        const show = input.type === "password";
+        input.type = show ? "text" : "password";
+        eye.querySelector("use").setAttribute("href", show ? "#i-eye-off" : "#i-eye");
+      },
+    }, icon("eye"));
+    actions.append(eye);
+  }
+  if (copy) {
+    actions.append(el("button", {
+      class: "copy-inside", type: "button", title: "复制内容", "aria-label": "复制内容",
+      onclick: () => {
+        const value = (input.value || "").trim();
+        if (!value) { toast("输入为空，没有可复制的内容", "fail"); return; }
+        copyText(value);
+      },
+    }, icon("copy")));
+  }
+  wrap.append(actions);
+  if (secret && copy) wrap.classList.add("dual");
   return wrap;
 }
 
@@ -382,6 +398,17 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
 
 const NUM_TYPES = new Set(["int", "float"]);
 
+/* 口令复杂性：≥8 位且至少 3 种字符类型（大小写字母/数字/特殊字符） */
+export function pwComplexityOk(pw) {
+  if (!pw || pw.length < 8) return false;
+  let types = 0;
+  if (/[a-z]/.test(pw)) types += 1;
+  if (/[A-Z]/.test(pw)) types += 1;
+  if (/[0-9]/.test(pw)) types += 1;
+  if (/[^A-Za-z0-9]/.test(pw)) types += 1;
+  return types >= 3;
+}
+
 /* 表单值缓存：同一命令在切换菜单后保留已填内容（内存级；刷新页面即清空） */
 const formState = {};
 
@@ -390,6 +417,7 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
   const dangerFields = [];
   const confirmState = { value: "" }; // keygen 二次确认口令
   const saved = formState[command.name] || (formState[command.name] = {});
+  let keygenPwBlock = null; // keygen：已存在密钥时隐藏口令输入
   const save = (name, value) => {
     if (value === null || value === undefined || value === "" || value === false || (Array.isArray(value) && !value.length)) {
       delete saved[name];
@@ -399,6 +427,7 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
   };
   const prev = (f) => (saved[f.name] !== undefined ? saved[f.name] : null);
   const pathInputs = {}; // name → input（供 key-status 等联动）
+  const boolInputs = {}; // name → checkbox（keygen 覆盖开关联动）
   let keyStatusEl = null;
 
   const fieldNode = (f) => {
@@ -461,20 +490,21 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     } else if (f.type === "password") {
       const input = el("input", {
         type: "password", id: "f-" + f.name, placeholder: f.placeholder || "",
-        autocomplete: "current-password", value: prev(f) !== null ? String(prev(f)) : "",
+        autocomplete: "current-password",
       });
-      input.addEventListener("input", () => save(f.name, input.value || null));
-      control = withCopyInside(input);
+      // 口令不做跨菜单缓存（防止眼睛回看旧口令）
+      control = withCopyInside(input, { secret: true });
       get = () => input.value || null;
       if (command.name === "keygen") {
-        // 口令强度：设置口令时至少 8 字符，过短直接阻止生成
+        // 口令复杂性：≥8 位且至少 3 种字符类型（大小写字母/数字/特殊字符）
         const weakHint = el("div", {
           class: "field-help", style: "color:var(--danger-text);display:none",
-        }, "口令过短：至少 8 个字符，请修改后再生成");
+        }, "口令不满足复杂性要求：长度 ≥8 位，且包含大小写字母/数字/特殊字符中的至少 3 种");
         input.addEventListener("input", () => {
-          weakHint.style.display = input.value.length > 0 && input.value.length < 8 ? "" : "none";
+          weakHint.style.display = input.value && !pwComplexityOk(input.value) ? "" : "none";
         });
         control = el("div", {}, control, weakHint);
+        keygenPwBlock = control; // 已存在密钥时由外层控制隐藏
       }
       if (command.fields.some((f2) => f2.name === "key" && f2.type === "path")) {
         // 私钥状态校验：加密/记住/未加密 透明化提示
@@ -542,6 +572,7 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         type: "checkbox", id: "f-" + f.name,
         checked: prev(f) !== null ? Boolean(prev(f)) : f.default === true,
       });
+      boolInputs[f.name] = input;
       input.addEventListener("change", () => save(f.name, input.checked ? true : null));
       control = el("label", { class: "switch", for: "f-" + f.name }, input, el("span", { class: "track" }));
       get = () => (input.checked ? true : null);
@@ -582,6 +613,7 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         type: "checkbox", id: "f-" + f.name,
         checked: prev(f) !== null ? Boolean(prev(f)) : f.default === true,
       });
+      boolInputs[f.name] = input;
       input.addEventListener("change", () => save(f.name, input.checked ? true : null));
       control = el("label", { class: "switch", for: "f-" + f.name }, input, el("span", { class: "track" }));
       get = () => (input.checked ? true : null);
@@ -612,8 +644,8 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
           toast(pw && !confirmState.value ? "请再次输入口令确认" : "两次输入的口令不一致", "fail");
           return;
         }
-        if (pw && pw.length < 8) {
-          toast("口令不满足复杂性要求（至少 8 个字符），请修改后再生成密钥对", "fail");
+        if (pw && !pwComplexityOk(pw)) {
+          toast("口令不满足复杂性要求：长度 ≥8 位，且包含大小写字母/数字/特殊字符中的至少 3 种，请修改后再生成", "fail");
           return;
         }
       }
@@ -646,6 +678,37 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       command.mutating ? "该操作会写入文件" : "只读操作，不会修改任何文件"));
   form.append(actions);
 
+  // keygen：已存在密钥 → 隐藏口令输入（防止他人通过眼睛窥视）；
+  // 勾选「覆盖已有密钥」替换时恢复显示，可设置新口令。
+  if (command.name === "keygen" && keygenPwBlock && boolInputs["force"] && pathInputs["private"]) {
+    const note = el("div", {
+      class: "key-status warn", style: "display:none",
+    }, "已存在密钥：已隐藏口令输入；勾选「覆盖已有密钥」替换时可设置新口令");
+    keygenPwBlock.parentNode.insertBefore(note, keygenPwBlock);
+    keygenPwBlock.style.display = "none";
+    let existTimer = null;
+    let keyExists = false;
+    const refresh = async () => {
+      const target = pathInputs["private"].value.trim();
+      keyExists = false;
+      if (target) {
+        try {
+          const info = await api.keyInfo(target);
+          keyExists = info.exists !== false;
+        } catch { keyExists = false; }
+      }
+      const showPw = !keyExists || boolInputs["force"].checked;
+      keygenPwBlock.style.display = showPw ? "" : "none";
+      note.style.display = showPw || !keyExists ? "none" : "";
+    };
+    pathInputs["private"].addEventListener("input", () => {
+      clearTimeout(existTimer);
+      existTimer = setTimeout(refresh, 350);
+    });
+    boolInputs["force"].addEventListener("change", refresh);
+    refresh();
+  }
+
   // 私钥状态校验联动（sign / attest）：私钥路径变化 → 检查加密与口令记忆
   const keyInput = pathInputs["key"];
   if (keyStatusEl && keyInput) {
@@ -662,7 +725,10 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       try {
         const info = await api.keyInfo(value);
         if (!keyStatusEl.isConnected) return;
-        if (info.encrypted && info.remembered) {
+        if (info.exists === false) {
+          keyStatusEl.className = "key-status err";
+          keyStatusEl.textContent = "私钥不存在或无法读取";
+        } else if (info.encrypted && info.remembered) {
           keyStatusEl.className = "key-status ok";
           keyStatusEl.textContent = "私钥已加密 · 口令已记住，可直接签名";
         } else if (info.encrypted) {

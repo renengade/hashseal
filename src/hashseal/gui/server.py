@@ -346,13 +346,23 @@ class GuiHandler(BaseHTTPRequestHandler):
         self._send_json({"path": str(audit_path()), "events": parsed})
 
     def _api_key_info(self, query: dict[str, list[str]]) -> None:
-        """私钥状态校验：是否加密、口令是否已记住（签名前的透明化检查）。"""
+        """私钥状态校验：是否存在、是否加密、口令是否已记住。"""
         server: GuiServer = self.server  # type: ignore[assignment]
         raw = (query.get("key") or [""])[0]
-        key_path = server.roots.require_readable(raw, label="私钥路径")
+        key_path = server.roots.require_inside(raw, label="私钥路径")
+        if not key_path.exists():
+            return self._send_json(
+                {
+                    "key": str(key_path),
+                    "exists": False,
+                    "encrypted": False,
+                    "remembered": False,
+                }
+            )
         self._send_json(
             {
                 "key": str(key_path),
+                "exists": True,
                 "encrypted": is_encrypted_key(key_path),
                 "remembered": server.vault.get(key_path) is not None,
             }

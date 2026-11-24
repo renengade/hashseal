@@ -287,3 +287,46 @@ class ReadOnlyTest(GuiTestBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KeyInfoTest(GuiTestBase):
+    def test_key_info_exists_and_remembered(self) -> None:
+        import urllib.parse
+
+        priv, pub = self.make_keypair("ki")
+        # 未加密密钥
+        status, payload = self.request(
+            "/api/key-info?key=" + urllib.parse.quote(str(priv))
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["exists"])
+        self.assertFalse(payload["encrypted"])
+        self.assertFalse(payload["remembered"])
+
+        # 不存在的路径 → exists False（而不是 404）
+        status, payload = self.request(
+            "/api/key-info?key=" + urllib.parse.quote(str(self.tmp / "nope.pem"))
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["exists"])
+
+        # 加密密钥 + 解锁 → remembered True
+        status, task = self.run_cmd(
+            "keygen",
+            {"private": str(priv), "public": str(pub),
+             "password": "Str0ng#Pass", "force": True},
+        )
+        self.assertEqual(task["state"], "succeeded")
+        status, payload = self.request(
+            "/api/key-info?key=" + urllib.parse.quote(str(priv))
+        )
+        self.assertTrue(payload["encrypted"])
+        self.assertFalse(payload["remembered"])
+        status, _ = self.request(
+            "/api/vault/unlock", method="POST",
+            body={"key": str(priv), "password": "Str0ng#Pass"},
+        )
+        status, payload = self.request(
+            "/api/key-info?key=" + urllib.parse.quote(str(priv))
+        )
+        self.assertTrue(payload["remembered"])
