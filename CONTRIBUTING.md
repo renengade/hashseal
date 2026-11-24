@@ -19,6 +19,14 @@ uv run --group docs mkdocs build --strict
 
 CI 在 **Ubuntu / macOS / Windows** 上运行（Windows 覆盖 3.12/3.13）。
 
+## 平台策略
+
+- GUI/CLI 的代码保持**跨平台**（同一套 Python/JS，不做运行时平台分支限制）；
+- **Windows 是主要目标与主验证平台**：新功能优先在 Windows 上验证，
+  安装入口为 `install.ps1`；
+- CI 必须同时覆盖 Linux / macOS / Windows；任何 Windows 专属修复不得破坏
+  其它平台（路径、换行、openssl、syslog 等易错点已有对应测试）。
+
 ## 约定
 
 - 保持 CLI 行为向后兼容；破坏性变更需要更新 CHANGELOG。
