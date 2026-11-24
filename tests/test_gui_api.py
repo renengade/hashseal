@@ -347,6 +347,17 @@ class KeyInfoTest(GuiTestBase):
         self.assertTrue(payload["remembered"])
 
 
+class BrowseShortcutsTest(GuiTestBase):
+    def test_browse_returns_shortcuts(self) -> None:
+        status, payload = self.request("/api/browse")
+        self.assertEqual(status, 200)
+        shortcuts = payload.get("shortcuts")
+        self.assertIsInstance(shortcuts, list)
+        for item in shortcuts:
+            self.assertIn("label", item)
+            self.assertTrue(Path(item["path"]).exists(), item)
+
+
 class OpenSslCapabilityTest(GuiTestBase):
     def test_timestamp_default_follows_openssl(self) -> None:
         from unittest import mock

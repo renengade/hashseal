@@ -234,7 +234,7 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
   return new Promise((resolve) => {
     let state = {
       path: null, entries: [], parent: null, filter: "", hidden: false,
-      outName: "", roots: [], pickedFile: null,
+      outName: "", roots: [], shortcuts: [], pickedFile: null,
     };
     const selected = new Set(); // multi 模式的多选
     let done = false;
@@ -310,6 +310,7 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       state.entries = data.entries || [];
       state.parent = data.parent;
       state.roots = data.roots || roots;
+      state.shortcuts = data.shortcuts || [];
       state.pickedFile = null; // 换目录后清除单选
       if (state.path) sessionStorage.setItem(LAST_DIR_KEY, state.path);
       renderCrumbs(state.roots);
@@ -343,6 +344,19 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
           class: "chip", type: "button", style: "cursor:pointer",
           onclick: () => navigate(root),
         }, icon("folder"), el("span", {}, shortPath(root, 34))));
+      }
+      return box;
+    }
+
+    function shortcutChips() {
+      if (!state.shortcuts.length) return null;
+      const box = el("div", { class: "chips", style: "margin-bottom:8px" });
+      for (const item of state.shortcuts) {
+        box.append(el("button", {
+          class: "chip", type: "button", style: "cursor:pointer",
+          title: item.path,
+          onclick: () => navigate(item.path),
+        }, icon(item.label === "主目录" ? "home" : "folder"), el("span", {}, item.label)));
       }
       return box;
     }
@@ -416,6 +430,7 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       {},
       crumbs,
       rootChips(roots),
+      shortcutChips(),
       el("div", { class: "field-row", style: "margin-bottom:10px" },
         filterInput,
         el("label", { class: "switch", style: "flex:none" }, hiddenInput, el("span", { class: "track" }), el("span", {}, "隐藏文件")),
@@ -704,6 +719,39 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     el("span", { class: "form-note" },
       command.mutating ? "该操作会写入文件" : "只读操作，不会修改任何文件"));
   form.append(actions);
+
+  // bundle / unpack：根据输入自动建议输出路径（用户手动改过后不再覆盖）
+  if (command.name === "bundle" && pathInputs["dir"] && pathInputs["output"]) {
+    let auto = pathInputs["output"].value.trim();
+    const suggest = () => {
+      const dir = pathInputs["dir"].value.trim();
+      const out = pathInputs["output"];
+      if (!dir) return;
+      const guess = joinPath(dirname(dir), basename(dir) + ".zip");
+      if (!out.value.trim() || out.value === auto) {
+        out.value = guess;
+        auto = guess;
+        out.dispatchEvent(new Event("input"));
+      }
+    };
+    pathInputs["dir"].addEventListener("input", suggest);
+  }
+  if (command.name === "unpack" && pathInputs["bundle"] && pathInputs["dest"]) {
+    let auto = pathInputs["dest"].value.trim();
+    const suggest = () => {
+      const bundle = pathInputs["bundle"].value.trim();
+      const dest = pathInputs["dest"];
+      if (!bundle) return;
+      const name = basename(bundle).replace(/\.zip$/i, "") || "bundle";
+      const guess = joinPath(dirname(bundle), name);
+      if (!dest.value.trim() || dest.value === auto) {
+        dest.value = guess;
+        auto = guess;
+        dest.dispatchEvent(new Event("input"));
+      }
+    };
+    pathInputs["bundle"].addEventListener("input", suggest);
+  }
 
   // keygen：已存在密钥 → 隐藏口令输入（防止他人通过眼睛窥视）；
   // 勾选「覆盖已有密钥」替换时恢复显示，可设置新口令。

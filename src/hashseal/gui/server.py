@@ -374,6 +374,30 @@ class GuiHandler(BaseHTTPRequestHandler):
             }
         )
 
+    def _shortcuts(self) -> list[dict]:
+        server: GuiServer = self.server  # type: ignore[assignment]
+        home = Path.home()
+        candidates = (
+            ("主目录", home),
+            ("桌面", home / "Desktop"),
+            ("下载", home / "Downloads"),
+            ("文档", home / "Documents"),
+        )
+        out: list[dict] = []
+        seen: set[str] = set()
+        for label, path in candidates:
+            try:
+                if not path.is_dir():
+                    continue
+                resolved = str(path.resolve())
+            except OSError:
+                continue
+            if not server.roots.contains(Path(resolved)) or resolved in seen:
+                continue
+            seen.add(resolved)
+            out.append({"label": label, "path": resolved})
+        return out
+
     def _api_browse(self, query: dict[str, list[str]]) -> None:
         server: GuiServer = self.server  # type: ignore[assignment]
         roots = server.roots
@@ -381,7 +405,13 @@ class GuiHandler(BaseHTTPRequestHandler):
         hidden = (query.get("hidden") or ["0"])[0] in ("1", "true")
         if not raw:
             return self._send_json(
-                {"path": None, "parent": None, "roots": roots.display, "entries": []}
+                {
+                    "path": None,
+                    "parent": None,
+                    "roots": roots.display,
+                    "shortcuts": self._shortcuts(),
+                    "entries": [],
+                }
             )
         target = roots.require_inside(raw, label="路径")
         if not target.exists():
@@ -419,6 +449,7 @@ class GuiHandler(BaseHTTPRequestHandler):
                 "path": str(target),
                 "parent": str(parent) if roots.contains(parent) else None,
                 "roots": roots.display,
+                "shortcuts": self._shortcuts(),
                 "entries": entries,
             }
         )

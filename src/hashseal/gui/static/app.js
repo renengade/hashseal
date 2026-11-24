@@ -448,7 +448,10 @@ async function pageAudit(page) {
           el("td", {}, String(r.ts_local || r.ts || "").slice(0, 19)),
           el("td", {}, String(r.event || "")),
           el("td", {}, String(r.source || "cli")),
-          el("td", {}, r.ok === undefined ? "—" : r.ok ? "✅" : "❌"),
+          el("td", {},
+            r.ok === undefined
+              ? (String(r.event || "").includes("fail") ? "❌" : "—")
+              : r.ok ? "✅" : "❌"),
           el("td", { class: "mono" }, shortPath(JSON.stringify(extra), 90)));
       })))));
   };
@@ -520,15 +523,31 @@ function pageSettings(page) {
       resultBox));
   }
 
+  const diagnostics = () => [
+    "hashseal 诊断信息",
+    `版本: ${state.status.version}`,
+    `平台: ${state.status.platform || "unknown"} / Python ${state.status.python}`,
+    `OpenSSL: ${state.status.openssl ? "可用" : "未安装"}`,
+    `只读模式: ${state.status.read_only ? "是" : "否"}`,
+    `配置: ${state.status.config_path}`,
+    `审计: ${state.status.audit_path}`,
+    `根目录: ${(state.status.roots || []).join(", ")}`,
+  ].join("\n");
+
   content.append(el("div", { class: "card" },
     el("div", { class: "card-title", style: "margin-bottom:8px" }, "服务信息"),
     el("div", { class: "kv" },
       el("div", { class: "k" }, "版本"), el("div", { class: "v mono" }, state.status.version),
-      el("div", { class: "k" }, "Python"), el("div", { class: "v mono" }, state.status.python),
+      el("div", { class: "k" }, "平台"), el("div", { class: "v mono" }, `${state.status.platform || "unknown"} / ${state.status.python}`),
+      el("div", { class: "k" }, "OpenSSL"), el("div", { class: "v" }, state.status.openssl ? "✅ 可用" : "❌ 未安装（时间戳链校验不可用）"),
       el("div", { class: "k" }, "审计日志"), el("div", { class: "v mono" }, state.status.audit_path),
       el("div", { class: "k" }, "闲置退出"), el("div", { class: "v" }, state.status.idle_timeout_minutes ? `${state.status.idle_timeout_minutes} 分钟` : "不自动退出"),
       el("div", { class: "k" }, "口令闲置锁定"), el("div", { class: "v" }, state.status.vault_timeout_minutes ? `${state.status.vault_timeout_minutes} 分钟` : "直到退出")),
     el("div", { class: "form-actions" },
+      el("button", {
+        class: "btn btn-ghost", type: "button",
+        onclick: () => copyText(diagnostics(), "诊断信息已复制"),
+      }, "复制诊断信息"),
       el("button", {
         class: "btn btn-danger", type: "button",
         onclick: async () => {
