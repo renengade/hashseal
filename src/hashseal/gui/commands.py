@@ -246,9 +246,10 @@ _COMMAND_LIST: list[Command] = [
                 label="署名",
                 placeholder="姓名 <email>",
                 help="纳入签名，防止冒用",
+                advanced=True,
             ),
             _f(name="timestamp", type="bool", flag="timestamp", label="申请可信时间戳"),
-            _f(name="force", type="bool", flag="force", label="覆盖已有签名"),
+            _f(name="force", type="bool", flag="force", label="覆盖已有签名", advanced=True),
             _f(
                 name="sig",
                 type="path",
@@ -384,6 +385,7 @@ _COMMAND_LIST: list[Command] = [
                 label="清单输出路径",
                 direction="out",
                 help="默认 MANIFEST.sha256",
+                advanced=True,
             ),
             _f(
                 name="base",
@@ -526,13 +528,21 @@ _COMMAND_LIST: list[Command] = [
         positional=("dir",),
         fields=(
             _f(name="dir", type="path", label="已签名目录", direction="in", required=True),
-            _f(name="output", type="path", flag="output", label="输出文件", direction="out"),
+            _f(
+                name="output",
+                type="path",
+                flag="output",
+                label="输出文件",
+                direction="out",
+                advanced=True,
+            ),
             _f(
                 name="deps",
                 type="bool",
                 flag="deps",
                 label="解析依赖组件",
                 help="从 uv.lock / requirements.txt 读取",
+                advanced=True,
             ),
             _f(
                 name="lock",
@@ -589,7 +599,7 @@ _COMMAND_LIST: list[Command] = [
                 min=0,
                 max=10,
             ),
-            _f(name="force", type="bool", flag="force", label="覆盖已有令牌"),
+            _f(name="force", type="bool", flag="force", label="覆盖已有令牌", advanced=True),
             _f(
                 name="allow_unverified_chain",
                 type="bool",
@@ -637,7 +647,7 @@ _COMMAND_LIST: list[Command] = [
                 min=0,
                 max=10,
             ),
-            _f(name="force", type="bool", flag="force", label="覆盖已有令牌"),
+            _f(name="force", type="bool", flag="force", label="覆盖已有令牌", advanced=True),
             _f(
                 name="allow_unverified_chain",
                 type="bool",
@@ -658,7 +668,8 @@ _COMMAND_LIST: list[Command] = [
         positional=("dir",),
         fields=(
             _f(name="dir", type="path", label="已签名目录", direction="in", required=True),
-            _f(name="output", type="path", flag="output", label="证明输出路径", direction="out"),
+            _f(name="output", type="path", flag="output", label="证明输出路径", direction="out",
+               advanced=True),
             _f(name="key", type="path", flag="key", label="私钥", direction="in"),
             _f(name="password", type="password", label="私钥口令", gui_only=True),
             _f(name="remember", type="bool", label="记住口令直到退出", gui_only=True),

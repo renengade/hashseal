@@ -519,12 +519,13 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       onSubmit(options);
     },
   });
+  form.append(grid);
   if (advanced.length) {
+    const names = advanced.slice(0, 3).map((f) => f.label || f.name).join("、");
     form.append(el("details", { class: "adv" },
-      el("summary", {}, "高级选项"),
+      el("summary", {}, `高级选项（${names}${advanced.length > 3 ? " 等" : ""}，共 ${advanced.length} 项）`),
       el("div", { class: "form-grid" }, advanced.map(fieldNode))));
   }
-  form.append(grid);
   const actions = el("div", { class: "form-actions" },
     el("button", { class: "btn btn-primary", type: "submit" }, submitLabel || command.title),
     el("span", { class: "form-note" },
