@@ -17,6 +17,8 @@ hashseal GUI 已启动（仅本机）
 
 用浏览器打开该地址即可。Ctrl+C 停止服务。
 
+升级：重新执行 `install.sh`（WSL/Linux/macOS）或 `install.ps1`（Windows）。两边的安装相互独立（密钥、配置、审计各自一套），版本需要各自升级。
+
 ### 常用选项
 
 | 选项 | 说明 |
