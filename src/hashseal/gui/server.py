@@ -204,6 +204,7 @@ class GuiHandler(BaseHTTPRequestHandler):
 
         server: GuiServer = self.server  # type: ignore[assignment]
         path = urlsplit(self.path).path
+        cfg = load_config()
 
         if method == "GET":
             if path == "/api/status":
@@ -213,11 +214,12 @@ class GuiHandler(BaseHTTPRequestHandler):
                     {
                         "sections": gui_commands.SECTIONS,
                         "section_commands": gui_commands.SECTION_COMMANDS,
-                        "commands": gui_commands.specs_for_frontend(),
+                        "commands": gui_commands.specs_for_frontend(
+                            config=cfg, cwd=Path.cwd(), roots=server.roots
+                        ),
                     }
                 )
             if path == "/api/config":
-                cfg = load_config()
                 return self._send_json({"path": str(config_path()), "config": cfg})
             if path == "/api/browse":
                 return self._api_browse(query)

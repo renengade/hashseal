@@ -383,7 +383,7 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     if (f.type === "path") {
       const input = el("input", {
         type: "text", id: "f-" + f.name, placeholder: f.placeholder || "",
-        value: "", autocomplete: "off", spellcheck: "false",
+        value: f.default || "", autocomplete: "off", spellcheck: "false",
       });
       control = el("div", { class: "field-row" }, input,
         el("button", {

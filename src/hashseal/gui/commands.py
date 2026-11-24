@@ -10,7 +10,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..core import DEFAULT_PRIVATE
+from ..config import config_path
+from ..core import DEFAULT_PRIVATE, DEFAULT_PUBLIC, MANIFEST_NAME
 from .security import ApiError, RootSet, check_str
 
 # --------------------------------------------------------------------------- #
@@ -668,8 +669,14 @@ _COMMAND_LIST: list[Command] = [
         positional=("dir",),
         fields=(
             _f(name="dir", type="path", label="已签名目录", direction="in", required=True),
-            _f(name="output", type="path", flag="output", label="证明输出路径", direction="out",
-               advanced=True),
+            _f(
+                name="output",
+                type="path",
+                flag="output",
+                label="证明输出路径",
+                direction="out",
+                advanced=True,
+            ),
             _f(name="key", type="path", flag="key", label="私钥", direction="in"),
             _f(name="password", type="password", label="私钥口令", gui_only=True),
             _f(name="remember", type="bool", label="记住口令直到退出", gui_only=True),
@@ -937,15 +944,73 @@ def prepare(command: Command, options: dict, roots: RootSet, config: dict) -> Pr
     return Prepared(argv=argv, password=password, remember_key=remember_key)
 
 
-def specs_for_frontend() -> list[dict]:
+def _path_default(
+    command: Command,
+    field_name: str,
+    config: dict,
+    cwd: Path,
+    roots: RootSet,
+) -> str:
+    """路径选项的默认值：与 CLI 的解析规则一致（配置优先 → 固定名 → 启动目录）。
+
+    预填仅是"透明化"：留空时 CLI 会解析出同样的默认值。若默认路径
+    不在允许根目录内则不预填，避免前端提交被 jail 拒绝。
+    """
+    cfg_key = config.get("key")
+    cfg_pub = config.get("pubkey")
+    raw: object = None
+    if field_name == "private" and command.name == "keygen":
+        raw = cfg_key or DEFAULT_PRIVATE
+    elif field_name == "public" and command.name == "keygen":
+        raw = cfg_pub or DEFAULT_PUBLIC
+    elif field_name == "key" and command.name in ("sign", "attest"):
+        raw = cfg_key or DEFAULT_PRIVATE
+    elif field_name == "key" and command.name in (
+        "verify",
+        "status",
+        "fingerprint",
+        "bundle",
+        "unpack",
+        "attest-verify",
+    ):
+        raw = cfg_pub or DEFAULT_PUBLIC
+    elif field_name == "output" and command.name == "manifest":
+        raw = MANIFEST_NAME
+    elif field_name == "output" and command.name == "sbom":
+        raw = "sbom.cdx.json"
+    elif field_name == "output" and command.name == "attest":
+        raw = "attestation.json"
+    elif field_name == "path" and command.name == "config-init":
+        raw = str(config_path())
+    if raw is None or raw == "":
+        return ""
+    path = Path(os.path.expanduser(str(raw)))
+    if not path.is_absolute():
+        path = cwd / path
+    if not roots.contains(path):
+        return ""
+    return str(path)
+
+
+def specs_for_frontend(
+    config: dict | None = None,
+    cwd: Path | None = None,
+    roots: RootSet | None = None,
+) -> list[dict]:
     """输出给前端渲染表单；不含任何敏感内容。"""
+    config = config or {}
+    cwd = cwd or Path.cwd()
     out: list[dict] = []
     for command in _COMMAND_LIST:
         fields = []
         for f in command.fields:
+            default = ""
+            if f.type == "path" and roots is not None:
+                default = _path_default(command, f.name, config, cwd, roots)
             fields.append(
                 {
                     "name": f.name,
+                    "default": default,
                     "type": f.type,
                     "label": f.label or f.name,
                     "help": f.help,
