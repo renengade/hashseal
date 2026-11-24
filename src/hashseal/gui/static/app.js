@@ -119,10 +119,19 @@ function route() {
   const page = el("div", { class: "page page-enter-" + dir + " stagger" });
   main.append(page);
 
-  if (hash === "") return pageDashboard(page);
-  if (hash === "audit") return pageAudit(page);
-  if (hash === "settings") return pageSettings(page);
-  if (state.sectionCommands[hash]) return pageCommands(page, hash);
+  try {
+    if (hash === "") return pageDashboard(page);
+    if (hash === "audit") return pageAudit(page);
+    if (hash === "settings") return pageSettings(page);
+    if (state.sectionCommands[hash]) return pageCommands(page, hash);
+  } catch (err) {
+    page.append(el("div", { class: "banner fail" }, icon("alert"),
+      el("div", {},
+        el("strong", {}, "页面渲染出错"),
+        el("div", { class: "sub" },
+          String(err && err.stack ? err.stack.split("\n").slice(0, 3).join("  |  ") : err)))));
+    return;
+  }
   page.append(el("div", { class: "banner warn" }, icon("alert"), el("div", {}, "页面不存在")));
 }
 
@@ -267,7 +276,17 @@ function pageCommands(page, sectionId) {
     const name = state.activeCommand[sectionId];
     const cmd = state.commands.get(name);
     cardBox.textContent = "";
-    cardBox.append(commandCard(cmd));
+    try {
+      cardBox.append(commandCard(cmd));
+    } catch (err) {
+      // 渲染失败必须可见，不允许静默空白
+      cardBox.append(el("div", { class: "banner fail" }, icon("alert"),
+        el("div", {},
+          el("strong", {}, "页面渲染出错"),
+          el("div", { class: "sub" },
+            String(err && err.stack ? err.stack.split("\n").slice(0, 3).join("  |  ") : err)),
+          el("div", { class: "sub" }, "请截图反馈；刷新页面（F5）可能恢复。"))));
+    }
   };
 
   for (const name of commands) {

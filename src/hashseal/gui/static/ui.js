@@ -493,8 +493,9 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         autocomplete: "current-password",
       });
       // 口令不做跨菜单缓存（防止眼睛回看旧口令）
-      control = withCopyInside(input, { secret: true });
+      const pwWrap = withCopyInside(input, { secret: true });
       get = () => input.value || null;
+      const parts = [pwWrap];
       if (command.name === "keygen") {
         // 口令复杂性：≥8 位且至少 3 种字符类型（大小写字母/数字/特殊字符）
         const weakHint = el("div", {
@@ -503,13 +504,12 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         input.addEventListener("input", () => {
           weakHint.style.display = input.value && !pwComplexityOk(input.value) ? "" : "none";
         });
-        control = el("div", {}, control, weakHint);
-        keygenPwBlock = control; // 已存在密钥时由外层控制隐藏
+        parts.push(weakHint);
       }
       if (command.fields.some((f2) => f2.name === "key" && f2.type === "path")) {
         // 私钥状态校验：加密/记住/未加密 透明化提示
         keyStatusEl = el("div", { class: "key-status" });
-        control = el("div", {}, control, keyStatusEl);
+        parts.push(keyStatusEl);
       }
       if (command.name === "keygen") {
         // 设置新口令：二次确认，两次输入不一致时阻止提交
@@ -531,14 +531,14 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         };
         input.addEventListener("input", check);
         confirmInput.addEventListener("input", check);
-        control = el(
-          "div",
-          {},
-          withCopyInside(input),
-          el("div", { class: "field", style: "margin-top:8px" },
-            el("label", { class: "field-label", for: confirmId }, el("span", {}, "确认口令")),
-            confirmInput,
-            hint));
+        parts.push(el("div", { class: "field", style: "margin-top:8px" },
+          el("label", { class: "field-label", for: confirmId }, el("span", {}, "确认口令")),
+          confirmInput,
+          hint));
+      }
+      control = el("div", {}, ...parts);
+      if (command.name === "keygen") {
+        keygenPwBlock = control; // 已存在密钥时由外层控制整体隐藏
       }
     } else if (f.type === "str") {
       const input = el("input", {
@@ -606,17 +606,6 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       });
       control = el("div", {}, chips, el("div", { style: "margin-top:6px" }, input));
       get = () => (values.length ? values.slice() : null);
-    }
-
-    if (f.gui_only && f.type === "bool") {
-      const input = el("input", {
-        type: "checkbox", id: "f-" + f.name,
-        checked: prev(f) !== null ? Boolean(prev(f)) : f.default === true,
-      });
-      boolInputs[f.name] = input;
-      input.addEventListener("change", () => save(f.name, input.checked ? true : null));
-      control = el("label", { class: "switch", for: "f-" + f.name }, input, el("span", { class: "track" }));
-      get = () => (input.checked ? true : null);
     }
 
     wrap.append(label, control);
