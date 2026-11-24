@@ -36,7 +36,8 @@ A：启动时加 `--root <目录>`，可多次指定。
 
 **Q：Windows 上签名报错「未安装 openssl」，必须安装吗？**
 A：不是必须。只有**时间戳的 TSA 证书链校验**需要它；普通签名/验证、目录、bundle、
-审计都不需要。不用时间戳可无视；需要时安装
+审计都不需要。Windows 安装器会自动尝试通过 winget 安装（可用
+`$env:HASHSEAL_NO_OPENSSL='1'` 跳过）；需要时也可手动安装
 `winget install ShiningLight.OpenSSL.Light`（或把 Git for Windows 的 openssl 加入 PATH），
 装完刷新 GUI 即可。明确接受风险可用 `--allow-unverified-chain`（只跳过链校验）。
 

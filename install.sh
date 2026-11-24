@@ -126,6 +126,12 @@ else
     fi
 fi
 
+if ! command -v openssl >/dev/null 2>&1; then
+    say ""
+    say "提示: 未找到 openssl —— 仅影响时间戳的 TSA 证书链校验，普通签名/验证不需要。"
+    say "      需要时间戳时请安装 openssl（Debian/Ubuntu: apt install openssl）。"
+fi
+
 say ""
 say "升级: 重新执行本脚本"
 say "卸载: uv tool uninstall hashseal"

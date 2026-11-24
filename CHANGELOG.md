@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.8
+
+### Added
+
+- Windows 安装器自动处理 OpenSSL（仅时间戳证书链校验需要）：
+  已安装则加入 PATH（含 Git for Windows 自带），否则尝试
+  `winget install ShiningLight.OpenSSL.Light`；失败不阻塞 hashseal 安装。
+  跳过：`$env:HASHSEAL_NO_OPENSSL='1'`。
+- Linux/WSL 安装脚本在缺少 openssl 时给出提示（不自动安装）。
+- 文档同步：OpenSSL 的必要性（仅时间戳）与安装器行为。
+
 ## 0.10.7
 
 ### Fixed（GUI）
