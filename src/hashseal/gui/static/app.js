@@ -390,7 +390,15 @@ function vaultCard() {
       }, icon("lock"), "全部锁定")),
     el("p", { class: "card-desc" }, "口令只保存在本进程内存中，绝不写盘；退出程序即清空。"));
 
-  const keyInput = el("input", { type: "text", placeholder: "私钥路径", "aria-label": "私钥路径" });
+  // 预填默认私钥路径（与 keygen 表单同一套服务端默认值：配置 key 优先 → 启动目录/hashseal_private.pem）
+  const keygenSpec = state.commands.get("keygen");
+  const defaultKeyPath = keygenSpec
+    ? (keygenSpec.fields.find((f) => f.name === "private") || {}).default || ""
+    : "";
+  const keyInput = el("input", {
+    type: "text", placeholder: "私钥路径", "aria-label": "私钥路径",
+    value: defaultKeyPath, autocomplete: "off", spellcheck: "false",
+  });
   const pwInput = el("input", { type: "password", placeholder: "私钥口令", "aria-label": "私钥口令", autocomplete: "current-password" });
   const list = el("div", { class: "chips", style: "margin-top:10px" });
 
