@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, urlsplit
 from .. import __version__
 from ..audit import audit_path, read_events
 from ..config import config_path, load_config
-from ..core import die
+from ..core import die, is_encrypted_key
 from . import commands as gui_commands
 from .security import (
     ApiError,
@@ -225,6 +225,8 @@ class GuiHandler(BaseHTTPRequestHandler):
                 return self._api_browse(query)
             if path == "/api/audit":
                 return self._api_audit(query)
+            if path == "/api/key-info":
+                return self._api_key_info(query)
             if path == "/api/vault":
                 return self._send_json({"keys": server.vault.keys()})
             if path == "/api/tasks":
@@ -342,6 +344,19 @@ class GuiHandler(BaseHTTPRequestHandler):
                 record = {"raw": line}
             parsed.append(record)
         self._send_json({"path": str(audit_path()), "events": parsed})
+
+    def _api_key_info(self, query: dict[str, list[str]]) -> None:
+        """私钥状态校验：是否加密、口令是否已记住（签名前的透明化检查）。"""
+        server: GuiServer = self.server  # type: ignore[assignment]
+        raw = (query.get("key") or [""])[0]
+        key_path = server.roots.require_readable(raw, label="私钥路径")
+        self._send_json(
+            {
+                "key": str(key_path),
+                "encrypted": is_encrypted_key(key_path),
+                "remembered": server.vault.get(key_path) is not None,
+            }
+        )
 
     def _api_browse(self, query: dict[str, list[str]]) -> None:
         server: GuiServer = self.server  # type: ignore[assignment]

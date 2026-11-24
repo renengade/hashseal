@@ -36,6 +36,7 @@ class Field:
     placeholder: str = ""
     gui_only: bool = False  # 不进入 argv（password/remember）
     inline: bool = False  # 横排展示、不折叠进高级选项
+    default: bool | None = None  # bool 字段预置开关值
 
 
 @dataclass(frozen=True)
@@ -240,7 +241,13 @@ _COMMAND_LIST: list[Command] = [
                 gui_only=True,
                 help="私钥已加密时必填；可选记住到退出",
             ),
-            _f(name="remember", type="bool", label="记住口令直到退出", gui_only=True),
+            _f(
+                name="remember",
+                type="bool",
+                label="记住口令直到退出",
+                gui_only=True,
+                default=True,
+            ),
             _f(
                 name="signer",
                 type="str",
@@ -250,7 +257,13 @@ _COMMAND_LIST: list[Command] = [
                 help="纳入签名，防止冒用",
                 inline=True,
             ),
-            _f(name="timestamp", type="bool", flag="timestamp", label="申请可信时间戳"),
+            _f(
+                name="timestamp",
+                type="bool",
+                flag="timestamp",
+                label="申请可信时间戳",
+                default=True,
+            ),
             _f(name="force", type="bool", flag="force", label="覆盖已有签名", inline=True),
             _f(
                 name="sig",
@@ -353,6 +366,7 @@ _COMMAND_LIST: list[Command] = [
                 label="记住口令直到退出",
                 gui_only=True,
                 inline=True,
+                default=True,
             ),
             _f(
                 name="force",
@@ -1017,9 +1031,11 @@ def specs_for_frontend(
     for command in _COMMAND_LIST:
         fields = []
         for f in command.fields:
-            default = ""
+            default: object = ""
             if f.type == "path" and roots is not None:
                 default = _path_default(command, f.name, config, cwd, roots)
+            elif f.type == "bool" and f.default is not None:
+                default = f.default
             fields.append(
                 {
                     "name": f.name,

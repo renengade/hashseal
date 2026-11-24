@@ -3,7 +3,7 @@
 import { api, ApiFail, initToken, hasToken, runTask } from "./api.js";
 import {
   el, icon, fmtBytes, fmtTime, shortPath, toast, copyText, withCopyInside,
-  openModal, confirmModal, pickPath, commandForm, taskResult, argvToCommand,
+  openModal, confirmModal, pickPath, commandForm, taskResult,
 } from "./ui.js";
 
 const state = {

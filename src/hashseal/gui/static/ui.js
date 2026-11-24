@@ -382,10 +382,24 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
 
 const NUM_TYPES = new Set(["int", "float"]);
 
+/* 表单值缓存：同一命令在切换菜单后保留已填内容（内存级；刷新页面即清空） */
+const formState = {};
+
 export function commandForm(command, { onSubmit, submitLabel } = {}) {
   const getters = {};
   const dangerFields = [];
   const confirmState = { value: "" }; // keygen 二次确认口令
+  const saved = formState[command.name] || (formState[command.name] = {});
+  const save = (name, value) => {
+    if (value === null || value === undefined || value === "" || value === false || (Array.isArray(value) && !value.length)) {
+      delete saved[name];
+    } else {
+      saved[name] = value;
+    }
+  };
+  const prev = (f) => (saved[f.name] !== undefined ? saved[f.name] : null);
+  const pathInputs = {}; // name → input（供 key-status 等联动）
+  let keyStatusEl = null;
 
   const fieldNode = (f) => {
     const wrap = el("div", { class: "field" + (f.danger ? " danger-field" : "") });
@@ -399,8 +413,11 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     if (f.type === "path") {
       const input = el("input", {
         type: "text", id: "f-" + f.name, placeholder: f.placeholder || "",
-        value: f.default || "", autocomplete: "off", spellcheck: "false",
+        value: prev(f) !== null ? String(prev(f)) : (f.default || ""),
+        autocomplete: "off", spellcheck: "false",
       });
+      pathInputs[f.name] = input;
+      input.addEventListener("input", () => save(f.name, input.value.trim() || null));
       control = el("div", { class: "field-row" }, withCopyInside(input),
         el("button", {
           class: "btn btn-ghost btn-sm", type: "button",
@@ -410,14 +427,18 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
               title: "选择" + f.label,
               initial: input.value,
             });
-            if (picked) input.value = Array.isArray(picked) ? picked[0] : picked;
+            if (picked) {
+              input.value = Array.isArray(picked) ? picked[0] : picked;
+              input.dispatchEvent(new Event("input")); // 触发缓存与私钥状态刷新
+            }
           },
         }, icon("folder"), "浏览…"));
       get = () => input.value.trim() || null;
     } else if (f.type === "paths") {
       const chips = el("div", { class: "chips" });
-      const values = [];
+      const values = prev(f) !== null ? String(prev(f)).split(",") : [];
       const renderChips = () => {
+        save(f.name, values.join(","));
         chips.textContent = "";
         values.forEach((v, i) => {
           chips.append(el("span", { class: "chip" }, shortPath(v, 40),
@@ -438,9 +459,28 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
           }, icon("plus"), "添加文件/目录")));
       get = () => (values.length ? values.slice() : null);
     } else if (f.type === "password") {
-      const input = el("input", { type: "password", id: "f-" + f.name, placeholder: f.placeholder || "", autocomplete: "current-password" });
+      const input = el("input", {
+        type: "password", id: "f-" + f.name, placeholder: f.placeholder || "",
+        autocomplete: "current-password", value: prev(f) !== null ? String(prev(f)) : "",
+      });
+      input.addEventListener("input", () => save(f.name, input.value || null));
       control = withCopyInside(input);
       get = () => input.value || null;
+      if (command.name === "keygen") {
+        // 口令强度：设置口令时至少 8 字符，过短直接阻止生成
+        const weakHint = el("div", {
+          class: "field-help", style: "color:var(--danger-text);display:none",
+        }, "口令过短：至少 8 个字符，请修改后再生成");
+        input.addEventListener("input", () => {
+          weakHint.style.display = input.value.length > 0 && input.value.length < 8 ? "" : "none";
+        });
+        control = el("div", {}, control, weakHint);
+      }
+      if (command.fields.some((f2) => f2.name === "key" && f2.type === "path")) {
+        // 私钥状态校验：加密/记住/未加密 透明化提示
+        keyStatusEl = el("div", { class: "key-status" });
+        control = el("div", {}, control, keyStatusEl);
+      }
       if (command.name === "keygen") {
         // 设置新口令：二次确认，两次输入不一致时阻止提交
         const confirmId = "f-" + f.name + "-confirm";
@@ -471,11 +511,19 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
             hint));
       }
     } else if (f.type === "str") {
-      const input = el("input", { type: "text", id: "f-" + f.name, placeholder: f.placeholder || "", autocomplete: "off", spellcheck: "false" });
+      const input = el("input", {
+        type: "text", id: "f-" + f.name, placeholder: f.placeholder || "",
+        autocomplete: "off", spellcheck: "false", value: prev(f) !== null ? String(prev(f)) : "",
+      });
+      input.addEventListener("input", () => save(f.name, input.value.trim() || null));
       control = input;
       get = () => input.value.trim() || null;
     } else if (f.type === "args") {
-      const input = el("input", { type: "text", id: "f-" + f.name, placeholder: f.placeholder || "stamp 文件名", autocomplete: "off", spellcheck: "false" });
+      const input = el("input", {
+        type: "text", id: "f-" + f.name, placeholder: f.placeholder || "stamp 文件名",
+        autocomplete: "off", spellcheck: "false", value: prev(f) !== null ? String(prev(f)) : "",
+      });
+      input.addEventListener("input", () => save(f.name, input.value.trim() || null));
       control = input;
       get = () => { const v = input.value.trim(); return v ? v.split(/\s+/) : null; };
     } else if (NUM_TYPES.has(f.type)) {
@@ -484,11 +532,17 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         min: f.min !== null && f.min !== undefined ? f.min : null,
         max: f.max !== null && f.max !== undefined ? f.max : null,
         step: f.type === "float" ? "any" : "1",
+        value: prev(f) !== null ? String(prev(f)) : "",
       });
+      input.addEventListener("input", () => save(f.name, input.value === "" ? null : Number(input.value)));
       control = input;
       get = () => (input.value === "" ? null : Number(input.value));
     } else if (f.type === "bool") {
-      const input = el("input", { type: "checkbox", id: "f-" + f.name });
+      const input = el("input", {
+        type: "checkbox", id: "f-" + f.name,
+        checked: prev(f) !== null ? Boolean(prev(f)) : f.default === true,
+      });
+      input.addEventListener("change", () => save(f.name, input.checked ? true : null));
       control = el("label", { class: "switch", for: "f-" + f.name }, input, el("span", { class: "track" }));
       get = () => (input.checked ? true : null);
       if (f.danger) dangerFields.push(() => input.checked);
@@ -496,13 +550,16 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
       const select = el("select", { id: "f-" + f.name },
         el("option", { value: "" }, "（默认）"),
         f.options.map((o) => el("option", { value: o }, o)));
+      if (prev(f) !== null) select.value = String(prev(f));
+      select.addEventListener("change", () => save(f.name, select.value || null));
       control = select;
       get = () => select.value || null;
     } else if (f.type === "list") {
       const chips = el("div", { class: "chips" });
-      const values = [];
+      const values = prev(f) !== null ? String(prev(f)).split(",") : [];
       const input = el("input", { type: "text", placeholder: "输入后回车添加，如 *.log", "aria-label": f.label });
       const renderChips = () => {
+        save(f.name, values.join(","));
         chips.textContent = "";
         values.forEach((v, i) => {
           chips.append(el("span", { class: "chip" }, v,
@@ -521,7 +578,11 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     }
 
     if (f.gui_only && f.type === "bool") {
-      const input = el("input", { type: "checkbox", id: "f-" + f.name });
+      const input = el("input", {
+        type: "checkbox", id: "f-" + f.name,
+        checked: prev(f) !== null ? Boolean(prev(f)) : f.default === true,
+      });
+      input.addEventListener("change", () => save(f.name, input.checked ? true : null));
       control = el("label", { class: "switch", for: "f-" + f.name }, input, el("span", { class: "track" }));
       get = () => (input.checked ? true : null);
     }
@@ -549,6 +610,10 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         const pw = options.password || "";
         if (pw !== confirmState.value) {
           toast(pw && !confirmState.value ? "请再次输入口令确认" : "两次输入的口令不一致", "fail");
+          return;
+        }
+        if (pw && pw.length < 8) {
+          toast("口令不满足复杂性要求（至少 8 个字符），请修改后再生成密钥对", "fail");
           return;
         }
       }
@@ -580,6 +645,46 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     el("span", { class: "form-note" },
       command.mutating ? "该操作会写入文件" : "只读操作，不会修改任何文件"));
   form.append(actions);
+
+  // 私钥状态校验联动（sign / attest）：私钥路径变化 → 检查加密与口令记忆
+  const keyInput = pathInputs["key"];
+  if (keyStatusEl && keyInput) {
+    let timer = null;
+    const updateKeyStatus = async () => {
+      const value = keyInput.value.trim();
+      if (!value) {
+        keyStatusEl.className = "key-status";
+        keyStatusEl.textContent = "";
+        return;
+      }
+      keyStatusEl.className = "key-status";
+      keyStatusEl.textContent = "检查私钥…";
+      try {
+        const info = await api.keyInfo(value);
+        if (!keyStatusEl.isConnected) return;
+        if (info.encrypted && info.remembered) {
+          keyStatusEl.className = "key-status ok";
+          keyStatusEl.textContent = "私钥已加密 · 口令已记住，可直接签名";
+        } else if (info.encrypted) {
+          keyStatusEl.className = "key-status warn";
+          keyStatusEl.textContent = "私钥已加密 · 需要输入口令";
+        } else {
+          keyStatusEl.className = "key-status warn";
+          keyStatusEl.textContent = "私钥未加密（建议加密后使用）";
+        }
+      } catch {
+        if (!keyStatusEl.isConnected) return;
+        keyStatusEl.className = "key-status err";
+        keyStatusEl.textContent = "私钥不存在或无法读取";
+      }
+    };
+    keyInput.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(updateKeyStatus, 350);
+    });
+    if (keyInput.value.trim()) updateKeyStatus();
+  }
+
   return form;
 }
 
@@ -596,24 +701,9 @@ function copyRow(text, display) {
   }, icon("copy"), display || shortPath(text, 36));
 }
 
-function argQuote(s) {
-  return /[\s"'\\]/.test(s) ? "'" + s.replace(/'/g, "'\\''") + "'" : s;
-}
-
-export function argvToCommand(argv) {
-  return argv.map(argQuote).join(" ");
-}
-
 function warningsBox(warnings) {
   if (!warnings || !warnings.length) return null;
   return el("ul", { class: "warn-list" }, warnings.slice(0, 20).map((w) => el("li", {}, w)));
-}
-
-function cmdLineRow(task) {
-  if (!task.argv || !task.argv.length) return null;
-  return el("div", { style: "margin-top:14px;display:flex;gap:8px;align-items:center" },
-    el("span", { class: "field-help" }, "等价命令："),
-    copyRow(argvToCommand(task.argv), "复制 CLI 命令"));
 }
 
 function tableOf(headers, rows, cap = 300) {
@@ -774,7 +864,6 @@ export function taskResult(command, task) {
 
   const box = el("div", {},
     warningsBox(task.warnings),
-    ...kids,
-    cmdLineRow(task));
+    ...kids);
   return box;
 }

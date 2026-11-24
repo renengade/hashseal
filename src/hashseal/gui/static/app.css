@@ -325,6 +325,12 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .grid-2 { grid-template-columns: 1fr; }
 }
 
+/* 私钥状态校验行 */
+.key-status { font-size: 12px; margin-top: 6px; color: var(--muted); }
+.key-status.ok { color: var(--ok); }
+.key-status.warn { color: var(--warn); }
+.key-status.err { color: var(--danger-text); }
+
 details.adv { border: 1px dashed var(--border); border-radius: var(--radius-control); padding: 10px 14px; }
 details.adv summary { cursor: pointer; color: var(--faint); font-size: 12.5px; user-select: none; }
 details.adv[open] summary { margin-bottom: 12px; }

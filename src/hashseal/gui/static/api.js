@@ -53,6 +53,7 @@ export const api = {
   config: () => request("/api/config"),
   browse: (path, hidden) =>
     request("/api/browse?hidden=" + (hidden ? "1" : "0") + (path ? "&path=" + encodeURIComponent(path) : "")),
+  keyInfo: (key) => request("/api/key-info?key=" + encodeURIComponent(key)),
   audit: (lines) => request("/api/audit?lines=" + lines),
   vault: () => request("/api/vault"),
   unlock: (key, password) => request("/api/vault/unlock", { method: "POST", body: { key, password } }),
