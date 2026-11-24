@@ -1713,9 +1713,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="PATH",
-        help="允许访问的根目录（可多次指定；默认为用户主目录 + 当前目录）",
+        help="额外的浏览起点（限制模式下作为白名单，可多次）",
     )
     g.add_argument("--read-only", action="store_true", help="只读模式：禁用签名/生成/解包等写操作")
+    g.add_argument(
+        "--restrict-roots",
+        action="store_true",
+        help="仅允许主目录/当前目录/--root（默认放开整个文件系统，便于选择任意目录）",
+    )
     g.add_argument(
         "--idle-timeout",
         type=float,

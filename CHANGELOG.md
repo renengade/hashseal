@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.11
+
+### Fixed
+
+- 修复 `hashseal web` 启动崩溃：0.10.10 的 parser 未注册 `--restrict-roots`，
+  而 `cmd_gui` 读取该属性（`AttributeError`）。已补参数并增加
+  「parser 命名空间覆盖 cmd_gui 所需字段」回归测试。
+
 ## 0.10.10
 
 ### Changed
