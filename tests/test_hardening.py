@@ -177,14 +177,14 @@ class HardeningTest(unittest.TestCase):
 
         from hashseal.cli import _pub_path
 
-        with mock.patch.dict(os.environ, {"HOME": str(self.tmp)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.tmp), "USERPROFILE": str(self.tmp)}):
             pub = self.tmp / "pub.pem"
             pub.write_bytes(self.pub.read_bytes())
             args = argparse.Namespace(pubkey="~/pub.pem")
             self.assertEqual(_pub_path(args), pub)
 
         self._sign()
-        with mock.patch.dict(os.environ, {"HOME": str(self.tmp)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.tmp), "USERPROFILE": str(self.tmp)}):
             rc, out = self._run("verify", str(self.target), "-k", "~/pub.pem")
         self.assertEqual(rc, 0, out)
 

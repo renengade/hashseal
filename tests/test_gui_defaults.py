@@ -89,18 +89,14 @@ class PathDefaultsTest(unittest.TestCase):
 
     def test_fixed_name_defaults_anchored_to_cwd(self) -> None:
         commands = self._commands()
-        def rp(name: str) -> str:
-            return str((self.tmp / name).resolve())
+        def assert_default(field: dict, name: str) -> None:
+            value = field["default"]
+            self.assertEqual(os.path.basename(value), name)
+            self.assertTrue(os.path.samefile(os.path.dirname(value), self.tmp), value)
 
-        self.assertEqual(
-            self._field(commands["manifest"], "output")["default"], rp("MANIFEST.sha256")
-        )
-        self.assertEqual(
-            self._field(commands["sbom"], "output")["default"], rp("sbom.cdx.json")
-        )
-        self.assertEqual(
-            self._field(commands["attest"], "output")["default"], rp("attestation.json")
-        )
+        assert_default(self._field(commands["manifest"], "output"), "MANIFEST.sha256")
+        assert_default(self._field(commands["sbom"], "output"), "sbom.cdx.json")
+        assert_default(self._field(commands["attest"], "output"), "attestation.json")
 
 
 if __name__ == "__main__":

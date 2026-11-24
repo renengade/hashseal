@@ -32,7 +32,17 @@ def load_config() -> dict:
         raw = path.read_text(encoding="utf-8")
         data = tomllib.loads(raw)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        warn(f"无法读取配置文件 {path}: {exc}")
+        hint = ""
+        try:
+            raw_text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            raw_text = ""
+        if "\\" in raw_text:
+            hint = (
+                "（提示：Windows 路径请使用正斜杠 C:/Users/... 或单引号字符串 "
+                "'C:\\\\Users\\\\...'，反斜杠在 TOML 双引号中会被当作转义）"
+            )
+        warn(f"无法读取配置文件 {path}: {exc}{hint}")
         return {}
     section = data.get("hashseal", data)
     return section if isinstance(section, dict) else {}

@@ -147,7 +147,7 @@ class FeatureTest(unittest.TestCase):
     # ---------------------------------------------------------------- config
     def test_config_pubkey_and_command(self) -> None:
         cfg = self.tmp / "config.toml"
-        cfg.write_text(f'[hashseal]\npubkey = "{self.pub}"\ntsa = "https://example.invalid"\n', encoding="utf-8")
+        cfg.write_text(f'[hashseal]\npubkey = "{self.pub.as_posix()}"\ntsa = "https://example.invalid"\n', encoding="utf-8")
         self._sign()
         with mock.patch.dict(os.environ, {"HASHSEAL_CONFIG": str(cfg)}):
             rc, out = self._run("verify", str(self.target))

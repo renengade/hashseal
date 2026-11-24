@@ -1,0 +1,8 @@
+# 统一源码换行，避免 Windows 检出改变测试夹具字节（TSA 令牌/签名对字节敏感）
+* text=auto eol=lf
+tests/fixtures/** -text
+*.pem -text
+*.tsr -text
+*.sig -text
+*.ttf -text
+*.woff2 -text
