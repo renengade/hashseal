@@ -447,10 +447,27 @@ progress.runbar { width: 200px; height: 6px; accent-color: var(--accent); }
 .hero-inner { position: relative; max-width: 1120px; margin: 0 auto; }
 .hero-kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint); }
 .hero-title { font-size: clamp(44px, 7vw, 72px); letter-spacing: -0.03em; line-height: 1.08; margin-top: 10px; }
+.hero-title-alt { color: var(--muted); }
 .hero-sub { color: var(--muted); margin-top: 14px; max-width: 560px; font-size: 15px; }
-.hero-actions { display: flex; gap: 10px; margin-top: 26px; flex-wrap: wrap; }
 .hero-art { position: absolute; right: 8px; bottom: -12px; width: 300px; color: var(--text); opacity: 0.4; pointer-events: none; }
 .hero-art svg { width: 100%; height: auto; stroke: currentColor; fill: none; stroke-width: 1; }
+
+/* 概览特性：编号 + 大标题 + 说明（无卡片底，和三步卡片区分） */
+.feature-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px;
+  margin: 4px 0 40px;
+}
+.feature { border-top: 1px solid var(--border-strong); padding-top: 16px; }
+.feature-kicker {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--accent);
+}
+.feature-title { font-size: clamp(26px, 2.6vw, 34px); line-height: 1.18; letter-spacing: -0.03em; margin-top: 12px; }
+.feature-desc { color: var(--muted); margin: 12px 0 0; font-size: 14px; line-height: 1.75; }
+
+.steps-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.steps-head .label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); }
+.steps-head .hint { color: var(--faint); font-size: 12.5px; }
 
 .quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .quick-card { text-align: left; cursor: pointer; }
@@ -535,6 +552,7 @@ progress.runbar { width: 200px; height: 6px; accent-color: var(--accent); }
   .main { margin-left: 0; padding: var(--pad-top) var(--pad-x) var(--pad-bottom); }
   .hero { margin: calc(-1 * var(--pad-top)) calc(-1 * var(--pad-x)) 26px; padding: 46px 20px 40px; }
   .hero-art { display: none; }
+  .feature-grid { grid-template-columns: 1fr; gap: 24px; margin-bottom: 30px; }
   .quick-grid, .dash-cols { grid-template-columns: 1fr; }
   .kv { grid-template-columns: 110px 1fr; }
 }

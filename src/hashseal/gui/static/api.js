@@ -64,6 +64,7 @@ export const api = {
   unlock: (key, password) => request("/api/vault/unlock", { method: "POST", body: { key, password } }),
   lock: (key) => request("/api/vault/lock", { method: "POST", body: key ? { key } : {} }),
   run: (command, options) => request("/api/run", { method: "POST", body: { command, options } }),
+  tasks: () => request("/api/tasks"),
   task: (id) => request("/api/tasks/" + id),
   cancel: (id) => request(`/api/tasks/${id}/cancel`, { method: "POST", body: {} }),
   shutdown: () => request("/api/shutdown", { method: "POST", body: {} }),

@@ -150,14 +150,10 @@ async function pageDashboard(page) {
   const hero = el("div", { class: "hero" },
     el("div", { class: "hero-inner" },
       el("div", { class: "hero-kicker" }, "HASHSEAL · SHA-256 + ED25519 + RFC 3161"),
-      el("div", { class: "hero-title" }, "证明文件没被改过、"),
-      el("div", { class: "hero-title", style: "color:var(--muted)" }, "是谁发的、什么时候发的。"),
+      el("div", { class: "hero-title" }, "签名在本机，"),
+      el("div", { class: "hero-title hero-title-alt" }, "验证交给任何人。"),
       el("p", { class: "hero-sub" },
         "在浏览器完成签名、验证、时间戳与分发校验；与 CLI 共用同一套密钥、配置与审计日志。"),
-      el("div", { class: "hero-actions" },
-        el("button", { class: "btn btn-primary", onclick: () => { location.hash = "#/keys"; } }, "生成密钥"),
-        el("button", { class: "btn btn-ghost", onclick: () => { location.hash = "#/sign"; } }, "签名文件"),
-        el("button", { class: "btn btn-ghost", onclick: () => { location.hash = "#/verify"; } }, "开始验证")),
       el("div", { class: "hero-art", "aria-hidden": "true", html:
         '<svg viewBox="0 0 300 170" fill="none" stroke="currentColor" stroke-width="1">' +
         '<circle cx="215" cy="55" r="42"/><path d="M198 55l12 12 22-24"/>' +
@@ -166,6 +162,22 @@ async function pageDashboard(page) {
         '<circle cx="73" cy="55" r="20"/><path d="M108 30l14-14M120 42l20-8"/>' +
         "</svg>" })),
   );
+
+  const features = el("div", { class: "feature-grid" });
+  for (const [kicker, title, desc] of [
+    ["#1 本地优先", "密钥不出本机", "密钥、口令与审计日志只留在你的机器上；界面仅绑定 127.0.0.1，不依赖云服务。"],
+    ["#2 开放格式", "任何人可复验", ".sig 是纯文本 JSON（hashseal/2），SHA-256 + Ed25519；按公开规范即可独立复验，无需本工具。"],
+    ["#3 可信时间", "证明此刻已存在", "可选 RFC 3161 时间戳与 in-toto 证明，为交付物补上可信时间与来源链。"],
+  ]) {
+    features.append(el("div", { class: "feature" },
+      el("div", { class: "feature-kicker" }, kicker),
+      el("h2", { class: "feature-title" }, title),
+      el("p", { class: "feature-desc" }, desc)));
+  }
+
+  const stepsHead = el("div", { class: "steps-head" },
+    el("span", { class: "label" }, "开始使用"),
+    el("span", { class: "hint" }, "点击任意步骤直达"));
 
   const quick = el("div", { class: "quick-grid" });
   for (const [section, iconName, text, desc] of [
@@ -193,7 +205,7 @@ async function pageDashboard(page) {
     content.append(el("div", { class: "note-bar" }, icon("alert"),
       el("span", {}, "当前为只读模式：签名、生成、解包等写操作已在服务端禁用。")));
   }
-  content.append(hero, quick, dash);
+  content.append(hero, features, stepsHead, quick, dash);
   dash.append(tasksCard, auditCard);
   page.append(content);
 
@@ -246,7 +258,9 @@ async function pageDashboard(page) {
   content.append(el("div", { class: "card", style: "margin-top:18px" },
     el("div", { class: "card-title", style: "margin-bottom:10px" }, "安全提示"),
     el("ul", { class: "warn-list", style: "color:var(--muted)" },
-      el("li", {}, "GUI 只能访问启动时指定的根目录（", state.status.roots.join("、"), "）内的文件。"),
+      el("li", {}, state.status.restrict_roots
+        ? "仅可访问启动时指定的根目录（" + state.status.roots.join("、") + "）内的文件。"
+        : "文件浏览默认放开整机；如需仅限指定目录，用 --restrict-roots 启动。"),
       el("li", {}, "地址中的 #token=… 是本服务的唯一凭证，请勿分享或截图。"),
       el("li", {}, "私钥口令只保存在本进程内存中，点击侧栏“锁定”或退出程序即清除。"))));
 }
