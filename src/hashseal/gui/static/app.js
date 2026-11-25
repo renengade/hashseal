@@ -150,8 +150,8 @@ async function pageDashboard(page) {
   const hero = el("div", { class: "hero" },
     el("div", { class: "hero-inner" },
       el("div", { class: "hero-kicker" }, "HASHSEAL · SHA-256 + ED25519 + RFC 3161"),
-      el("div", { class: "hero-title" }, "签名在本机，"),
-      el("div", { class: "hero-title hero-title-alt" }, "验证交给任何人。"),
+      el("div", { class: "hero-title" }, "端内落签，"),
+      el("div", { class: "hero-title hero-title-alt" }, "寰宇可鉴。"),
       el("p", { class: "hero-sub" },
         "在浏览器完成签名、验证、时间戳与分发校验；与 CLI 共用同一套密钥、配置与审计日志。"),
       el("div", { class: "hero-art", "aria-hidden": "true", html:
@@ -166,8 +166,8 @@ async function pageDashboard(page) {
   const features = el("div", { class: "feature-grid" });
   for (const [kicker, title, desc] of [
     ["#1 本地优先", "密钥不出本机", "密钥、口令与审计日志只留在你的机器上；界面仅绑定 127.0.0.1，不依赖云服务。"],
-    ["#2 开放格式", "任何人可复验", ".sig 是纯文本 JSON（hashseal/2），SHA-256 + Ed25519；按公开规范即可独立复验，无需本工具。"],
-    ["#3 可信时间", "证明此刻已存在", "可选 RFC 3161 时间戳与 in-toto 证明，为交付物补上可信时间与来源链。"],
+    ["#2 开放格式", "凭据独立可验", ".sig 是纯文本 JSON（hashseal/2），SHA-256 + Ed25519；按公开规范即可独立复验，无需本工具。"],
+    ["#3 可信时间", "时记以证当时", "可选 RFC 3161 时间戳与 in-toto 证明，为交付物补上可信时间与来源链。"],
   ]) {
     features.append(el("div", { class: "feature" },
       el("div", { class: "feature-kicker" }, kicker),

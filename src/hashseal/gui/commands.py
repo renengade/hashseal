@@ -359,7 +359,6 @@ _COMMAND_LIST: list[Command] = [
                 label="私钥口令",
                 gui_only=True,
                 placeholder="≥8 位，含大小写字母/数字/特殊字符至少 3 种",
-                help="留空不加密（不推荐）",
             ),
             _f(
                 name="remember",

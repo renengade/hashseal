@@ -568,26 +568,23 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
         // 设置新口令：二次确认，两次输入不一致时阻止提交
         const confirmId = "f-" + f.name + "-confirm";
         const confirmInput = el("input", {
-          type: "password", id: confirmId, placeholder: "再次输入口令",
+          type: "password", id: confirmId,
+          placeholder: "再次输入口令（留空不加密，不推荐）",
           autocomplete: "new-password",
         });
-        const hint = el("div", {
-          class: "field-help", style: "color:var(--danger-text);display:none",
-        }, "两次输入的口令不一致");
         const check = () => {
           confirmState.value = confirmInput.value;
           const mismatch =
             (confirmInput.value !== "" && confirmInput.value !== input.value) ||
             (confirmInput.value === "" && input.value !== "");
-          hint.style.display = mismatch ? "" : "none";
           confirmInput.style.borderColor = mismatch ? "rgba(255,83,112,.55)" : "";
+          confirmInput.setCustomValidity(mismatch ? "两次输入的口令不一致" : "");
         };
         input.addEventListener("input", check);
         confirmInput.addEventListener("input", check);
         parts.push(el("div", { class: "field", style: "margin-top:8px" },
           el("label", { class: "field-label", for: confirmId }, el("span", {}, "确认口令")),
-          confirmInput,
-          hint));
+          confirmInput));
       }
       control = el("div", {}, ...parts);
       if (command.name === "keygen") {
