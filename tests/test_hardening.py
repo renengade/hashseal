@@ -252,7 +252,8 @@ class HardeningTest(unittest.TestCase):
         rc, out = self._run("sbom", str(d))
         self.assertEqual(rc, 0, out)
         self.assertTrue(expected.is_file(), out)
-        self.assertIn(str(expected), out)
+        # Windows 8.3 短路径（RUNNER~1）会被 resolve() 展开，按文件名断言即可
+        self.assertIn("pkg.cdx.json", out)
         data = json.loads(expected.read_text(encoding="utf-8"))
         self.assertEqual(data["bomFormat"], "CycloneDX")
 
