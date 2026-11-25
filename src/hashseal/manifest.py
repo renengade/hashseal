@@ -20,6 +20,29 @@ from .core import (
 
 _LINE_RE = re.compile(r"^([0-9a-fA-F]{64}) [ *](.+)$")
 
+# .hashseal/ 是元数据目录：只允许下列已知文件。
+# 其他任何文件都算“未列入”（不能借元数据目录藏文件绕过校验）。
+META_DIR_ALLOWED = frozenset(
+    {
+        MANIFEST_NAME,
+        f"{MANIFEST_NAME}.sig",
+        f"{MANIFEST_NAME}.sig.tsr",
+        f"{MANIFEST_NAME}.sig.ots",
+        "hashseal-bundle.json",
+        "hashseal-public.pem",
+    }
+)
+# 旧 bundle 的元数据曾在根目录；仅忽略这两个固定文件名（不是整个目录）。
+LEGACY_META_NAMES = frozenset({"hashseal-bundle.json", "hashseal-public.pem"})
+
+
+def _meta_dir_state(rel: PurePosixPath) -> bool | None:
+    """True=.hashseal 下已知元数据；False=.hashseal 下未知文件；None=不在 .hashseal。"""
+    parts = rel.parts
+    if not parts or parts[0] != META_DIR:
+        return None
+    return len(parts) == 2 and parts[1] in META_DIR_ALLOWED
+
 
 class ManifestError(Exception):
     """清单内容非法（路径逃逸、格式错误等）。"""
@@ -61,11 +84,15 @@ def iter_files(
                     fp = Path(dirpath) / f
                     if fp.is_symlink() and not follow_symlinks:
                         continue
-                    if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
-                        continue
                     try:
                         rel = PurePosixPath(fp.resolve().relative_to(root).as_posix())
                     except ValueError:
+                        continue
+                    if _meta_dir_state(rel) is not None:
+                        continue  # .hashseal/ 不参与载荷签名
+                    if rel.as_posix() in LEGACY_META_NAMES:
+                        continue
+                    if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
                         continue
                     if _excluded(rel, patterns):
                         continue
@@ -243,13 +270,20 @@ def find_unlisted(
                     pass
                 skipped.append(f"symlink: {fp}")
                 continue
-            if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
-                continue
             try:
                 rel = fp.resolve().relative_to(root_resolved)
             except ValueError:
                 continue
             rel_posix = PurePosixPath(rel.as_posix())
+            state = _meta_dir_state(rel_posix)
+            if state is not None:
+                if state is False and rel_posix.as_posix() not in listed:
+                    extras.append(rel_posix.as_posix())
+                continue
+            if rel_posix.as_posix() in LEGACY_META_NAMES:
+                continue
+            if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
+                continue
             if _excluded(rel_posix, patterns):
                 skipped.append(f"excluded: {rel_posix.as_posix()}")
                 continue
@@ -298,16 +332,30 @@ def verify_tree(
             dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
             for name in sorted(filenames):
                 fp = Path(dirpath) / name
-                if fp.is_symlink() and not follow_symlinks:
-                    skipped.append(f"symlink: {fp}")
-                    continue
-                if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
-                    continue
                 try:
                     resolved = fp.resolve().relative_to(root_resolved)
                 except (ValueError, OSError):
+                    if fp.is_symlink() and not follow_symlinks:
+                        skipped.append(f"symlink: {fp}")
                     continue
                 rel_posix = PurePosixPath(resolved.as_posix()).as_posix()
+                state = _meta_dir_state(PurePosixPath(rel_posix))
+                if state is not None:
+                    if state is False:
+                        if rel_posix in listed_map:
+                            # 旧清单里显式签过：照常校验，不当作未列入
+                            seen.add(rel_posix)
+                            tasks.append((index_of[rel_posix], fp.resolve()))
+                        else:
+                            unlisted.append(rel_posix)
+                    continue
+                if fp.is_symlink() and not follow_symlinks:
+                    skipped.append(f"symlink: {fp}")
+                    continue
+                if rel_posix in LEGACY_META_NAMES:
+                    continue
+                if fp.suffix in SKIP_SUFFIXES or fp.name == MANIFEST_NAME:
+                    continue
                 if _excluded(PurePosixPath(rel_posix), patterns):
                     skipped.append(f"excluded: {rel_posix}")
                     continue

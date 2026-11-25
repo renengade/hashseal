@@ -201,7 +201,8 @@ class HardeningTest(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         names = zipfile.ZipFile(bundle).namelist()
         self.assertEqual(names.count("public.pem"), 1)
-        self.assertIn("hashseal-public.pem", names)
+        self.assertIn(".hashseal/hashseal-public.pem", names)
+        self.assertNotIn("hashseal-public.pem", names)
 
         rc, out = self._run("unpack", str(bundle), "-d", str(self.tmp / "out"), "-k", str(self.pub))
         self.assertEqual(rc, 0, out)
@@ -209,6 +210,85 @@ class HardeningTest(unittest.TestCase):
             (self.tmp / "out" / "public.pem").read_text(encoding="utf-8"),
             "payload public.pem",
         )
+
+    def test_bundle_meta_in_meta_dir_and_manual_verify(self) -> None:
+        import zipfile
+
+        d = self._make_dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        bundle = self.tmp / "layout.zip"
+        rc, out = self._run("bundle", str(d), "-o", str(bundle), "-k", str(self.pub))
+        self.assertEqual(rc, 0, out)
+
+        names = zipfile.ZipFile(bundle).namelist()
+        self.assertIn(".hashseal/hashseal-bundle.json", names)
+        self.assertIn(".hashseal/hashseal-public.pem", names)
+        self.assertNotIn("hashseal-bundle.json", names)
+        self.assertNotIn("hashseal-public.pem", names)
+
+        manual = self.tmp / "manual"
+        manual.mkdir()
+        with zipfile.ZipFile(bundle) as zf:
+            zf.extractall(manual)
+        rc, out = self._run("verify", str(manual), "-p", str(self.pub))
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("未列入", out)
+
+    def test_sbom_default_output_next_to_dir(self) -> None:
+        d = self._make_dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        expected = d.parent / (d.name + ".cdx.json")
+        rc, out = self._run("sbom", str(d))
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(expected.is_file(), out)
+        self.assertIn(str(expected), out)
+        data = json.loads(expected.read_text(encoding="utf-8"))
+        self.assertEqual(data["bomFormat"], "CycloneDX")
+
+    def test_sbom_explicit_output_still_wins(self) -> None:
+        d = self._make_dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        out_file = self.tmp / "custom.cdx.json"
+        rc, out = self._run("sbom", str(d), "-o", str(out_file))
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(out_file.is_file(), out)
+
+    def test_unknown_file_in_meta_dir_is_unlisted(self) -> None:
+        d = self._make_dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        (d / ".hashseal" / "evil.txt").write_text("hidden\n", encoding="utf-8")
+        rc, out = self._run("verify", str(d), "-p", str(self.pub))
+        self.assertEqual(rc, 1, out)
+        self.assertIn(".hashseal/evil.txt", out)
+
+    def test_unknown_sig_suffix_in_meta_dir_is_unlisted(self) -> None:
+        d = self._make_dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        # .sig 后缀在普通目录会被跳过；.hashseal/ 下不能借此藏文件
+        (d / ".hashseal" / "evil.sig").write_text("hidden\n", encoding="utf-8")
+        rc, out = self._run("verify", str(d), "-p", str(self.pub))
+        self.assertEqual(rc, 1, out)
+        self.assertIn(".hashseal/evil.sig", out)
+
+    def test_legacy_bundle_meta_not_unlisted(self) -> None:
+        d = self._make_dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        (d / "hashseal-bundle.json").write_text("{}\n", encoding="utf-8")
+        (d / "hashseal-public.pem").write_text(self.pub.read_text(encoding="utf-8"), encoding="utf-8")
+        rc, out = self._run("verify", str(d), "-p", str(self.pub))
+        self.assertEqual(rc, 0, out)
+
+    def test_unpack_uses_embedded_key_in_meta_dir(self) -> None:
+        d = self._make_dir()
+        self._run("sign", str(d), "-k", str(self.priv), "--force")
+        bundle = self.tmp / "embedded.zip"
+        rc, out = self._run("bundle", str(d), "-o", str(bundle), "-k", str(self.pub))
+        self.assertEqual(rc, 0, out)
+
+        dest = self.tmp / "embedded-out"
+        rc, out = self._run("unpack", str(bundle), "-d", str(dest), "--trust-embedded-key")
+        self.assertEqual(rc, 0, out)
+        self.assertTrue((dest / ".hashseal" / "hashseal-public.pem").is_file())
 
     def test_unpack_streams_large_file(self) -> None:
         import hashlib

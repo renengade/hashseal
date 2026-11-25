@@ -748,6 +748,24 @@ export function commandForm(command, { onSubmit, submitLabel } = {}) {
     };
     pathInputs["dir"].addEventListener("input", suggest);
   }
+  if (command.name === "sbom" && pathInputs["dir"] && pathInputs["output"]) {
+    let auto = pathInputs["output"].value.trim();
+    const suggest = () => {
+      const dir = pathInputs["dir"].value.trim();
+      const out = pathInputs["output"];
+      if (!dir) return;
+      const name = basename(dir);
+      if (!name || name === "." || name === "..") return;
+      const guess = joinPath(dirname(dir), name + ".cdx.json");
+      if (!out.value.trim() || out.value === auto) {
+        out.value = guess;
+        auto = guess;
+        out.dispatchEvent(new Event("input"));
+      }
+    };
+    pathInputs["dir"].addEventListener("input", suggest);
+    suggest();
+  }
   if (command.name === "unpack" && pathInputs["bundle"] && pathInputs["dest"]) {
     let auto = pathInputs["dest"].value.trim();
     const suggest = () => {

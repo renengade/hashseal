@@ -237,7 +237,20 @@ hashseal inspect FILE [--json]
 
 ## bundle
 
-把已签名目录打包为可分发 zip（**始终内置公钥** `hashseal-public.pem`）。
+把已签名目录打包为可分发 zip（**始终内置公钥**）。
+元数据全部位于 `.hashseal/`，zip 根目录只保留载荷：
+
+```
+.hashseal/MANIFEST.sha256
+.hashseal/MANIFEST.sha256.sig
+.hashseal/MANIFEST.sha256.sig.tsr   # 可选
+.hashseal/hashseal-bundle.json
+.hashseal/hashseal-public.pem
+<payload ...>
+```
+
+`.hashseal/` 是保留目录：只允许上述已知文件；放入其他文件（包括 `.sig`/`.tsr`）
+会按「未列入清单」处理，不能借元数据目录绕过校验。
 
 ```
 hashseal bundle DIR -o ZIP [-k KEY] [--allow-unlisted] [--compress stored|deflate] [-j N]
@@ -263,7 +276,7 @@ hashseal unpack ZIP -d DIR [-k KEY] [--force] [--no-verify] [--trust-embedded-ke
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `-d, --dest` | 必填 | 解包目标目录 |
-| `-k, --key` | 配置 `pubkey` / `hashseal_public.pem` | 可信公钥（内置公钥仅在显式 `--trust-embedded-key` 时使用） |
+| `-k, --key` | 配置 `pubkey` / `hashseal_public.pem` | 可信公钥（内置公钥 `.hashseal/hashseal-public.pem` 仅在显式 `--trust-embedded-key` 时使用；兼容旧包根目录位置） |
 | `--force` | — | 覆盖非空目标目录 |
 | `--no-verify` | — | 跳过校验（危险） |
 | `--trust-embedded-key` | — | 接受 bundle 内置公钥（危险） |
@@ -280,6 +293,10 @@ hashseal unpack ZIP -d DIR [-k KEY] [--force] [--no-verify] [--trust-embedded-ke
 ```
 hashseal sbom DIR [-o PATH] [--deps] [--lock PATH]
 ```
+
+默认输出 **与已签名目录同级** 的 `<DIR>.cdx.json`（例如 `dist/` → `dist.cdx.json`），
+不写进已签名目录（否则会变成未列入文件），也不依赖当前工作目录。
+`-o` 可显式指定其他路径。
 
 ---
 

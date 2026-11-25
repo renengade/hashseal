@@ -100,8 +100,9 @@ class PathDefaultsTest(unittest.TestCase):
             self.assertTrue(os.path.samefile(os.path.dirname(value), self.tmp), value)
 
         assert_default(self._field(commands["manifest"], "output"), "MANIFEST.sha256")
-        assert_default(self._field(commands["sbom"], "output"), "sbom.cdx.json")
         assert_default(self._field(commands["attest"], "output"), "attestation.json")
+        # SBOM 默认依赖输入的目录（<dir>.cdx.json），由前端随目录自动填入
+        self.assertEqual(self._field(commands["sbom"], "output")["default"], "")
 
 
 if __name__ == "__main__":

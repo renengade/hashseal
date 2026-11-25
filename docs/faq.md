@@ -15,6 +15,16 @@ A：只需要文件 + `.sig`（+ `.tsr`）+ 发送方公钥。验证不需要网
 **Q：旧版 `fileproof` 生成的 `.sig` 还能验吗？**
 A：能。只读兼容 `fileproof/1` 与 `hashseal/1`；新签名写 `hashseal/2`。
 
+**Q：手动解压 bundle 后 `verify` 报「未列入」两个文件？**
+A：0.10.18+ 已把 `hashseal-bundle.json`、`hashseal-public.pem` 放进 `.hashseal/`，
+并按固定路径忽略，手动解压后可直接验证；旧 bundle 同样兼容。注意 `.hashseal/`
+只允许已知元数据，放入其他文件仍会被判为未列入（防绕过）。
+
+**Q：SBOM 默认生成到哪里？为什么不放进已签名目录？**
+A：默认生成在与目录同级的 `<目录>.cdx.json`。放进已签名目录会变成未列入文件，
+导致 `verify` 失败；`bundle` 也不会自动包含 SBOM，需要分发时单独签名，
+或放进目录后重新签名打包。
+
 **Q：`.sig` 里的 `created` 是可信时间吗？**
 A：不是。它是签名者自填的声明时间，未参与签名；可信时间看 `.tsr`。
 

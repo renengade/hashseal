@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.18
+
+### Changed
+
+- bundle 布局升级为 `hashseal-bundle/2`：`hashseal-bundle.json` 与
+  `hashseal-public.pem` 移入 `.hashseal/`，zip 根目录只保留载荷。
+- `verify` 默认忽略固定的 bundle 元数据路径（新旧布局均兼容），
+  手动解压后不再误报「未列入 2」。
+- 解包兼容旧 bundle（根目录元数据回退）；新 bundle 需 0.10.18+ 解包。
+- `sbom` 默认输出改为与已签名目录同级的 `<目录>.cdx.json`，不再按进程 cwd
+  落到主目录；GUI 会随目录输入自动填入该路径。
+
+### Security
+
+- `.hashseal/` 采用白名单：仅允许 `MANIFEST.sha256`、其 `.sig/.tsr/.ots`、
+  `hashseal-bundle.json`、`hashseal-public.pem`。其他文件一律按未列入处理，
+  包括此前会被通用规则跳过的 `.sig`/`.tsr` 后缀，防止借元数据目录绕过校验。
+- 签名时跳过 `.hashseal/` 与旧根目录 bundle 元数据，避免元数据被当作载荷
+  或被后续打包覆盖导致校验失败。
+
 ## 0.10.17
 
 ### Changed（GUI）

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from .core import (
+    META_DIR,
     fmt_time,
     load_public,
     parse_record,
@@ -24,8 +25,10 @@ from .manifest import (
     verify_tree,
 )
 
-BUNDLE_META = "hashseal-bundle.json"
-BUNDLE_FORMAT = "hashseal-bundle/1"
+BUNDLE_META_NAME = "hashseal-bundle.json"
+BUNDLE_META = f"{META_DIR}/{BUNDLE_META_NAME}"
+BUNDLE_PUBKEY = f"{META_DIR}/hashseal-public.pem"
+BUNDLE_FORMAT = "hashseal-bundle/2"
 # 解包防护（zip bomb）：默认上限，可在调用处覆盖
 MAX_UNPACK_BYTES = 8 * 1024**3   # 8 GiB
 MAX_UNPACK_ENTRIES = 100_000
@@ -112,8 +115,8 @@ def create_bundle(
             if tsr.is_file():
                 zf.write(tsr, tsr_rel)
             if include_pubkey:
-                # 避免与载荷中同名 public.pem 冲突
-                zf.write(public_key_path, "hashseal-public.pem")
+                # 元数据统一放 .hashseal/，避免污染根目录；也避免与载荷 public.pem 冲突
+                zf.write(public_key_path, BUNDLE_PUBKEY)
             for _digest, rel in entries:
                 zf.write(root / rel, rel)
         os.replace(tmp_path, out_path)
@@ -150,7 +153,11 @@ def unpack_bundle(
                 raise BundleError(
                     f"bundle 解压后大小超限：{total} 字节 > {max_bytes}（疑似 zip bomb）"
                 )
-            meta_raw = zf.read(BUNDLE_META)
+            try:
+                meta_raw = zf.read(BUNDLE_META)
+            except KeyError:
+                # 兼容旧 bundle：元数据曾在 zip 根目录
+                meta_raw = zf.read(BUNDLE_META_NAME)
             meta = json.loads(meta_raw.decode("utf-8"))
             for info in infos:
                 pure = _safe_name(info.filename)

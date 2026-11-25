@@ -994,8 +994,6 @@ def _path_default(
         raw = cfg_pub or DEFAULT_PUBLIC
     elif field_name == "output" and command.name == "manifest":
         raw = MANIFEST_NAME
-    elif field_name == "output" and command.name == "sbom":
-        raw = "sbom.cdx.json"
     elif field_name == "output" and command.name == "attest":
         raw = "attestation.json"
     elif field_name == "path" and command.name == "config-init":

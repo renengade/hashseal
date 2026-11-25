@@ -28,19 +28,24 @@ DSSE 签名覆盖 `PAE(payloadType, payload)`，可用标准 in-toto 工具链�
 ## SBOM
 
 ```bash
-hashseal sbom dist -o sbom.cdx.json
-hashseal sbom dist -o sbom.cdx.json --deps
+hashseal sbom dist                 # 默认输出 dist.cdx.json（与 dist/ 同级）
+hashseal sbom dist --deps
 ```
 
 - 默认生成文件级 CycloneDX 1.5；
+- 默认输出与已签名目录同级，不放进 `dist/`（避免未列入），也不依赖当前目录；
 - `--deps` 解析 `uv.lock` 或 `requirements.txt`，追加 `library` 组件（name/version/purl）；
 - `--lock PATH` 指定依赖清单。
 
 SBOM 本身是数据，需要可信时再签名：
 
 ```bash
-hashseal sign sbom.cdx.json --timestamp
+hashseal sign dist.cdx.json --timestamp
 ```
+
+分发建议：`bundle` **不会自动包含** SBOM。需要随交付物提供时，单独签名后与
+bundle 一起分发（`dist.zip` + `dist.cdx.json` + `.sig`）；若必须纳入清单，
+先把 SBOM 放进目录再重新 `sign`/`bundle`。
 
 ## GUI 中的证明页
 

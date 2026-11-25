@@ -1207,7 +1207,9 @@ def cmd_unpack(args: argparse.Namespace) -> int:
         )
         _audit(args, "unpack", path=str(dest), ok=True, verified=False)
         return 0
-    included_pub = dest / "hashseal-public.pem"
+    included_pub = dest / META_DIR / "hashseal-public.pem"
+    if not included_pub.is_file():
+        included_pub = dest / "hashseal-public.pem"  # 兼容旧布局
     pub = Path(_exp(args.pubkey)) if args.pubkey else None
     if not pub and included_pub.is_file():
         if args.trust_embedded_key:
@@ -1226,10 +1228,6 @@ def cmd_unpack(args: argparse.Namespace) -> int:
             str(dest),
             "-p",
             str(pub),
-            "--exclude",
-            "hashseal-bundle.json",
-            "--exclude",
-            "hashseal-public.pem",
         ]
     )
     verify_args._config = getattr(args, "_config", {})
@@ -1434,7 +1432,13 @@ def cmd_sbom(args: argparse.Namespace) -> int:
         )
     except (ManifestError, FileNotFoundError) as exc:
         die(str(exc))
-    out = Path(_exp(args.output))
+    if args.output:
+        out = Path(_exp(args.output))
+    else:
+        # 默认与已签名目录同级：<dir>.cdx.json；不写进目录内（避免未列入）
+        abs_root = root.resolve()
+        stem = abs_root.name or "sbom"
+        out = abs_root.parent / f"{stem}.cdx.json"
     atomic_write_text(out, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
     _set_result(
         args,
@@ -1691,7 +1695,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sb = sub.add_parser("sbom", help="从已签名清单生成 CycloneDX SBOM")
     sb.add_argument("dir")
-    sb.add_argument("-o", "--output", default="sbom.cdx.json")
+    sb.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="输出文件（默认 <目录>.cdx.json，与已签名目录同级）",
+    )
     sb.add_argument("--deps", action="store_true", help="解析 uv.lock/requirements.txt 加入组件")
     sb.add_argument("--lock", help="指定依赖清单路径")
     sb.set_defaults(func=cmd_sbom)
