@@ -28,7 +28,28 @@ const SECTION_LABEL = {
 
 /* ---------- 启动 ---------- */
 
+function initTheme() {
+  const btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+  const apply = (theme, persist) => {
+    document.documentElement.dataset.theme = theme;
+    if (persist) {
+      try { localStorage.setItem("hashseal.theme", theme); } catch { /* ignore */ }
+    }
+    btn.replaceChildren(icon(theme === "light" ? "moon" : "sun"));
+    const next = theme === "light" ? "深色" : "浅色";
+    btn.setAttribute("aria-label", "切换到" + next + "主题");
+    btn.title = "切换到" + next + "主题";
+  };
+  const current = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  apply(current, false);
+  btn.addEventListener("click", () => {
+    apply(document.documentElement.dataset.theme === "light" ? "dark" : "light", true);
+  });
+}
+
 async function boot() {
+  initTheme();
   initToken();
   window.addEventListener("hashchange", route);
   window.addEventListener("hashseal:unauthorized", showUnauthorized);

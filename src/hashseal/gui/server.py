@@ -52,6 +52,7 @@ STATIC_FILES: dict[str, tuple[str, str]] = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/api.js": ("api.js", "text/javascript; charset=utf-8"),
     "/ui.js": ("ui.js", "text/javascript; charset=utf-8"),
+    "/theme.js": ("theme.js", "text/javascript; charset=utf-8"),
     "/favicon.svg": ("favicon.svg", "image/svg+xml"),
 }
 

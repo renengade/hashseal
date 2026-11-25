@@ -99,8 +99,16 @@ class StaticTest(GuiTestBase):
         self.assertEqual(headers["referrer-policy"], "no-referrer")
         self.assertEqual(headers["x-frame-options"], "DENY")
 
+    def test_index_has_theme_toggle_and_repo_link(self) -> None:
+        import urllib.request
+
+        body = urllib.request.urlopen(self.base + "/", timeout=30).read().decode("utf-8")
+        self.assertIn('id="theme-toggle"', body)
+        self.assertIn("/theme.js", body)
+        self.assertIn("https://github.com/renengade/hashseal", body)
+
     def test_static_allowlist(self) -> None:
-        for path in ("/app.css", "/app.js", "/api.js", "/ui.js", "/favicon.svg"):
+        for path in ("/app.css", "/app.js", "/api.js", "/ui.js", "/theme.js", "/favicon.svg"):
             self._headers(path)
         import urllib.error
         import urllib.request
