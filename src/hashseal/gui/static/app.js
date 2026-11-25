@@ -577,7 +577,15 @@ function pageSettings(page) {
           document.getElementById("main").textContent = "";
           document.getElementById("main").append(el("div", { class: "content" },
             el("div", { class: "banner ok" }, icon("check"),
-              el("div", {}, el("strong", {}, "服务已退出"), el("div", { class: "sub" }, "可关闭此页面。")))));
+              el("div", {}, el("strong", {}, "服务已退出"), el("div", { class: "sub" }, "正在关闭页面…")))));
+          // 尽力关闭标签页；非脚本打开的标签页会被浏览器拦截，此时给出明确提示
+          setTimeout(() => {
+            try { window.close(); } catch { /* ignore */ }
+            setTimeout(() => {
+              const sub = document.querySelector("#main .banner.ok .sub");
+              if (sub) sub.textContent = "服务已停止；浏览器未允许自动关闭，请手动关闭此页面。";
+            }, 500);
+          }, 250);
         },
       }, "退出服务"))));
   page.append(content);
