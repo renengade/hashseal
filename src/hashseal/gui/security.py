@@ -63,7 +63,12 @@ class RootSet:
         except OSError:
             return False
         for root in self._norm:
-            if resolved == root or resolved.startswith(root + os.sep):
+            if resolved == root:
+                return True
+            # 根目录自身可能已以分隔符结尾（POSIX "/"、Windows "C:\"）：
+            # 不能再拼一个分隔符，否则 "/mnt" 会被判为不在 "/" 内。
+            prefix = root if root.endswith(os.sep) else root + os.sep
+            if resolved.startswith(prefix):
                 return True
         return False
 

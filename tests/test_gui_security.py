@@ -139,6 +139,7 @@ class PathJailTest(GuiTestBase):
         self.assertEqual(status, 200)
         names = [e["name"] for e in payload["entries"]]
         self.assertIn("sub", names)
+
         # 父目录要么不可上溯（None），要么必须落在某个允许根内
         # （Windows 下 tmp 位于用户 home 内；用 realpath 消除 8.3 短路径差异）
         def canon(p: str) -> str:
@@ -206,8 +207,19 @@ class SystemRootsTest(GuiTestBase):
         import urllib.parse
 
         target = "C:\\" if os.name == "nt" else "/"
-        status, payload = self.request(
-            "/api/browse?path=" + urllib.parse.quote(target)
-        )
+        status, payload = self.request("/api/browse?path=" + urllib.parse.quote(target))
         self.assertEqual(status, 200, payload)
         self.assertTrue(payload["entries"])
+
+    @unittest.skipIf(os.name == "nt", "POSIX 根目录 /")
+    def test_can_browse_child_of_system_root(self) -> None:
+        """回归：根 "/" 已带分隔符，拼接后不能变成 "//" 导致 /mnt 被判越界。"""
+        import urllib.parse
+        from pathlib import Path
+
+        child = next(
+            p for p in sorted(Path("/").iterdir()) if p.is_dir() and not p.name.startswith(".")
+        )
+        status, payload = self.request("/api/browse?path=" + urllib.parse.quote(str(child)))
+        self.assertEqual(status, 200, payload)
+        self.assertTrue(payload["entries"] or payload["path"])
