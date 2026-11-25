@@ -210,6 +210,9 @@ class SystemRootsTest(GuiTestBase):
         status, payload = self.request("/api/browse?path=" + urllib.parse.quote(target))
         self.assertEqual(status, 200, payload)
         self.assertTrue(payload["entries"])
+        # 系统根仍在 jail 内，但不出现在「根目录」列表里
+        self.assertIn(target, payload["roots"])
+        self.assertNotIn(target, payload["display_roots"])
 
     @unittest.skipIf(os.name == "nt", "POSIX 根目录 /")
     def test_can_browse_child_of_system_root(self) -> None:

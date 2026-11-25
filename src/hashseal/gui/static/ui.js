@@ -286,8 +286,28 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       },
     }, "确定");
 
+    const dirSelectBtn = mode === "multi"
+      ? el("button", {
+          class: "btn btn-ghost", type: "button",
+          onclick: () => {
+            if (!state.path) return;
+            if (selected.has(state.path)) selected.delete(state.path);
+            else selected.add(state.path);
+            updateDirBtn();
+          },
+        }, "选中当前目录")
+      : null;
+
+    function updateDirBtn() {
+      if (!dirSelectBtn) return;
+      const has = Boolean(state.path) && selected.has(state.path);
+      dirSelectBtn.textContent = has ? "取消选中当前目录" : "选中当前目录";
+      dirSelectBtn.disabled = !state.path;
+    }
+
     const tick = setInterval(() => {
       confirmBtn.textContent = mode === "multi" ? `确定（已选 ${selected.size}）` : "确定";
+      updateDirBtn();
       if (done) clearInterval(tick);
     }, 300);
 
@@ -309,12 +329,14 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       state.path = data.path;
       state.entries = data.entries || [];
       state.parent = data.parent;
-      state.roots = data.roots || roots;
+      state.roots = data.display_roots || data.roots || roots;
       state.shortcuts = data.shortcuts || [];
       state.pickedFile = null; // 换目录后清除单选
       if (state.path) sessionStorage.setItem(LAST_DIR_KEY, state.path);
       renderCrumbs(state.roots);
+      renderShortcuts();
       renderList();
+      updateDirBtn();
     }
 
     function renderCrumbs(rootList) {
@@ -337,17 +359,7 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       });
     }
 
-    function rootChips(rootList) {
-      const box = el("div", { class: "chips", style: "margin-bottom:8px" });
-      for (const root of rootList || []) {
-        box.append(el("button", {
-          class: "chip", type: "button", style: "cursor:pointer",
-          onclick: () => navigate(root),
-        }, icon("folder"), el("span", {}, shortPath(root, 34))));
-      }
-      return box;
-    }
-
+    const shortcutBox = el("div", {});
     function shortcutChips() {
       if (!state.shortcuts.length) return null;
       const box = el("div", { class: "chips", style: "margin-bottom:8px" });
@@ -360,6 +372,11 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       }
       return box;
     }
+    function renderShortcuts() {
+      shortcutBox.textContent = "";
+      const box = shortcutChips();
+      if (box) shortcutBox.append(box);
+    }
 
     function renderList() {
       listEl.textContent = "";
@@ -371,8 +388,6 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
             onclick: () => navigate(root),
           }, icon("folder"), el("span", {}, root)));
         }
-        listEl.append(el("div", { class: "picker-row disabled" },
-          "↑ 从上面的根目录进入；选中后按“确定”"));
         return;
       }
       const entries = state.entries.filter((e2) =>
@@ -407,12 +422,8 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
     function onRow(entry) {
       if (entry.kind === "dir") {
         if (!entry.navigable) { toast("该目录无法访问（根目录限制）", "fail"); return; }
-        if (mode === "multi") {
-          selected.has(entry.path) ? selected.delete(entry.path) : selected.add(entry.path);
-          renderList();
-          return;
-        }
-        navigate(entry.path); // 单选模式：进入目录，按“确定”选用当前目录
+        // 目录始终是“进入”，多选时用下方「选中当前目录」选中目录本身
+        navigate(entry.path);
         return;
       }
       // 文件
@@ -429,19 +440,23 @@ export function pickPath({ mode = "any", title = "选择路径", initial = "", r
       "div",
       {},
       crumbs,
-      rootChips(roots),
-      shortcutChips(),
+      shortcutBox,
       el("div", { class: "field-row", style: "margin-bottom:10px" },
         filterInput,
         el("label", { class: "switch", style: "flex:none" }, hiddenInput, el("span", { class: "track" }), el("span", {}, "隐藏文件")),
       ),
       listEl,
+      mode === "multi"
+        ? el("div", { class: "field-help", style: "margin-top:8px" },
+            "点击目录进入；需要选中目录本身时，进入后点「选中当前目录」。")
+        : null,
       mode === "out"
         ? el("div", { class: "field", style: "margin-top:14px" },
             el("div", { class: "field-label" }, el("span", {}, "文件名")), outNameInput)
         : null,
       el("div", { class: "form-actions" },
         confirmBtn,
+        dirSelectBtn,
         el("button", { class: "btn btn-ghost", type: "button", onclick: () => finish(null) }, "取消")),
     );
 

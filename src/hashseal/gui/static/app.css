@@ -297,6 +297,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   font-size: 12px; color: var(--muted);
   max-width: 100%;
 }
+.chip > svg { width: 13px; height: 13px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .chip .chip-x { border: none; background: none; color: var(--faint); cursor: pointer; padding: 0; display: inline-flex; }
 .chip .chip-x:hover { color: var(--text); }
 .chip .chip-x svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; }

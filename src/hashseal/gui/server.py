@@ -398,6 +398,16 @@ class GuiHandler(BaseHTTPRequestHandler):
                 continue
             seen.add(resolved)
             out.append({"label": label, "path": resolved})
+        mnt = Path("/mnt")
+        if _is_wsl() and mnt.is_dir() and server.roots.contains(mnt):
+            out.append({"label": "Windows 磁盘", "path": "/mnt"})
+        if os.name == "nt":
+            for drive in _system_roots():
+                resolved = str(drive)
+                if resolved in seen or not server.roots.contains(drive):
+                    continue
+                seen.add(resolved)
+                out.append({"label": resolved.rstrip("\\/") + " 盘", "path": resolved})
         return out
 
     def _api_browse(self, query: dict[str, list[str]]) -> None:
@@ -405,12 +415,18 @@ class GuiHandler(BaseHTTPRequestHandler):
         roots = server.roots
         raw = (query.get("path") or [""])[0]
         hidden = (query.get("hidden") or ["0"])[0] in ("1", "true")
+        visible_roots = (
+            roots.display
+            if server.settings.restrict_roots
+            else [r for r in roots.display if not _is_system_root_path(r)]
+        )
         if not raw:
             return self._send_json(
                 {
                     "path": None,
                     "parent": None,
                     "roots": roots.display,
+                    "display_roots": visible_roots,
                     "shortcuts": self._shortcuts(),
                     "entries": [],
                 }
@@ -451,6 +467,7 @@ class GuiHandler(BaseHTTPRequestHandler):
                 "path": str(target),
                 "parent": str(parent) if roots.contains(parent) else None,
                 "roots": roots.display,
+                "display_roots": visible_roots,
                 "shortcuts": self._shortcuts(),
                 "entries": entries,
             }
@@ -560,6 +577,14 @@ def _default_roots(extra: list[Path]) -> list[Path]:
         if root not in roots:
             roots.append(root)
     return roots
+
+
+def _is_system_root_path(path: str) -> bool:
+    """是否为文件系统根（POSIX "/" 或 Windows 盘符根）。"""
+    if os.name == "nt":
+        stripped = path.rstrip("\\/")
+        return len(stripped) == 2 and stripped[1] == ":" and stripped[0].isalpha()
+    return path == "/"
 
 
 def _system_roots() -> list[Path]:
