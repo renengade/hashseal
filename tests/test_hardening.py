@@ -234,6 +234,17 @@ class HardeningTest(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertNotIn("未列入", out)
 
+    def test_cli_emoji_survives_gbk_stdout(self) -> None:
+        from hashseal.cli import _harden_stdio
+
+        buf = io.BytesIO()
+        stream = io.TextIOWrapper(buf, encoding="gbk", errors="strict")
+        with mock.patch("sys.stdout", stream):
+            _harden_stdio()
+            print("✅ ok")
+            stream.flush()
+        self.assertIn(b"?", buf.getvalue())
+
     def test_sbom_default_output_next_to_dir(self) -> None:
         d = self._make_dir()
         self._run("sign", str(d), "-k", str(self.priv), "--force")

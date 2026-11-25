@@ -1749,7 +1749,25 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _harden_stdio() -> None:
+    """Windows 管道/重定向到 GBK 等编码时，避免 ✅/❌ 触发 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        encoding = getattr(stream, "encoding", None)
+        if not encoding:
+            continue
+        try:
+            "✅".encode(encoding)
+        except (UnicodeEncodeError, LookupError):
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure):
+                try:
+                    reconfigure(errors="replace")
+                except (ValueError, OSError):
+                    pass
+
+
 def main(argv: list[str] | None = None, *, context: CommandContext | None = None) -> int:
+    _harden_stdio()
     ctx = context if context is not None else CommandContext()
     tokens = activate(ctx)
     args: argparse.Namespace | None = None

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.19
+
+### Fixed
+
+- Windows CLI 在管道/重定向（GBK 等非 UTF-8 编码）下输出 `✅/❌` 会抛
+  `UnicodeEncodeError` 并中断命令；现在自动降级为 `errors="replace"`，
+  保证脚本与日志重定向不再崩溃（交互式控制台不受影响）。
+
 ## 0.10.18
 
 ### Changed
