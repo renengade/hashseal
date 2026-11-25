@@ -288,6 +288,39 @@ async function pageDashboard(page) {
 
 /* ---------- 命令页 ---------- */
 
+// 每个命令保留最近一次结果：切换菜单/命令标签后仍可见，
+// 直到下一次提交同一命令时清除。
+const lastResults = new Map();
+
+function resultBanner(message, hint = "") {
+  return el("div", { class: "banner fail" }, icon("alert"),
+    el("div", {}, el("strong", {}, "执行失败"),
+      el("div", { class: "sub" }, message + (hint ? "（" + hint + "）" : ""))));
+}
+
+function renderSavedResult(cmd, saved) {
+  try {
+    if (saved.kind === "running") {
+      return el("div", { class: "running" },
+        el("div", { class: "spinner" }), el("span", {}, "执行中…"));
+    }
+    return saved.kind === "task" ? taskResult(cmd.name, saved.task) : resultBanner(saved.message, saved.hint);
+  } catch (err) {
+    return resultBanner("结果渲染失败：" + String(err));
+  }
+}
+
+// 把最近结果画到当前页面（若提交时的 resultBox 已随换页移除，则找新页上的盒子）
+function paintResult(name, preferred) {
+  const cmd = state.commands.get(name);
+  let box = preferred && preferred.isConnected ? preferred : null;
+  if (!box) box = document.querySelector('[data-result-for="' + name + '"]');
+  if (!box || !cmd) return;
+  box.textContent = "";
+  const saved = lastResults.get(name);
+  if (saved) box.append(renderSavedResult(cmd, saved));
+}
+
 function pageCommands(page, sectionId) {
   const commands = state.sectionCommands[sectionId] || [];
   if (!state.activeCommand[sectionId]) state.activeCommand[sectionId] = commands[0];
@@ -359,16 +392,19 @@ function commandCard(cmd) {
       cmd.mutating ? el("span", { class: "badge info" }, "写操作") : el("span", { class: "badge info" }, "只读")),
     el("p", { class: "card-desc" }, cmd.desc),
   );
-  const resultBox = el("div", {});
+  const resultBox = el("div", { dataset: { resultFor: cmd.name } });
   const form = commandForm(cmd, {
     submitLabel: cmd.title,
     onSubmit: (options) => execute(cmd, options, resultBox),
   });
+  const saved = lastResults.get(cmd.name);
+  if (saved) resultBox.append(renderSavedResult(cmd, saved));
   card.append(form, resultBox);
   return card;
 }
 
 async function execute(cmd, options, resultBox) {
+  lastResults.set(cmd.name, { kind: "running" });
   resultBox.textContent = "";
   const running = el("div", { class: "running" },
     el("div", { class: "spinner" }),
@@ -397,21 +433,15 @@ async function execute(cmd, options, resultBox) {
   };
   try {
     const task = await runTask(cmd.name, options, onTask);
-    if (!resultBox.isConnected) return;
-    resultBox.textContent = "";
-    resultBox.append(taskResult(cmd.name, task));
+    lastResults.set(cmd.name, { kind: "task", task });
+    paintResult(cmd.name, resultBox);
     if (task.state === "succeeded") updateVaultChip();
   } catch (err) {
-    if (!resultBox.isConnected) return;
-    resultBox.textContent = "";
-    if (err instanceof ApiFail) {
-      resultBox.append(el("div", { class: "banner fail" }, icon("alert"),
-        el("div", {}, el("strong", {}, "提交失败"),
-          el("div", { class: "sub" }, err.message + (err.hint ? "（" + err.hint + "）" : "")))));
-    } else {
-      resultBox.append(el("div", { class: "banner fail" }, icon("alert"),
-        el("div", {}, el("strong", {}, "发生错误"), el("div", { class: "sub" }, String(err)))));
-    }
+    const detail = err instanceof ApiFail
+      ? { message: err.message || "提交失败", hint: err.hint || "" }
+      : { message: String(err), hint: "" };
+    lastResults.set(cmd.name, { kind: "error", ...detail });
+    paintResult(cmd.name, resultBox);
   }
 }
 
