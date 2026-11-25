@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.14
+
+### Docs / 仓库清理
+
+- 删除未维护或易过期的文件：`ROADMAP.md`（内容已并入 CHANGELOG）、`SECURITY.md`、
+  `action.yml` 及 README 中固定旧版本的 GitHub Action 示例；漏洞报告改为
+  GitHub Security Advisories。
+- 修正安装文档的版本示例（统一为当前版本并注明以 Releases 为准）；
+  Docker 改为「本地构建」而非声称已发布镜像。
+- 修正测试夹具说明：新签名格式为 `hashseal/2`（旧格式仅只读兼容）。
+- 修正 GUI 文档中路径选择器快捷入口的根目录描述。
+
 ## 0.10.13
 
 ### Changed（GUI）

@@ -90,16 +90,8 @@ hashseal web
 
 更多：[威胁模型](https://renengade.github.io/hashseal/threat-model) · [GUI 安全模型](https://renengade.github.io/hashseal/gui)
 
-## CI 中使用（GitHub Action）
-
-```yaml
-- uses: renengade/hashseal@v0.10.4
-  with:
-    path: dist
-    pubkey: hashseal_public.pem     # 仓库内路径
-    version: v0.10.4                # 固定 hashseal 版本
-    # tsr: dist/.hashseal/MANIFEST.sha256.sig.tsr
-```
+漏洞请通过 [GitHub Security Advisories](https://github.com/renengade/hashseal/security/advisories/new)
+私密报告，不要在公开 Issue 中披露未修复细节。
 
 ## 开发
 

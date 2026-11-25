@@ -22,13 +22,15 @@ Windows 上会自动写入用户 PATH，重开终端生效。
 
 ## 锁定版本
 
+示例版本号以 Releases 最新 tag 为准（当前为 `v0.10.13`）。
+
 ```bash
 curl -fsSL https://github.com/renengade/hashseal/releases/latest/download/install.sh \
-  | HASHSEAL_REF=v0.10.4 sh
+  | HASHSEAL_REF=v0.10.13 sh
 ```
 
 ```powershell
-$env:HASHSEAL_REF = "v0.10.4"
+$env:HASHSEAL_REF = "v0.10.13"
 irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 | iex
 ```
 
@@ -39,14 +41,14 @@ GitHub 自动打包的 tag archive（它的哈希**不在** `SHA256SUMS` 中）�
 请显式指定 Release 的 sdist：
 
 ```bash
-HASHSEAL_URL=https://github.com/renengade/hashseal/releases/download/v0.10.4/hashseal-0.10.4.tar.gz \
-HASHSEAL_SHA256=<SHA256SUMS 中 hashseal-0.10.4.tar.gz 的值> \
+HASHSEAL_URL=https://github.com/renengade/hashseal/releases/download/v0.10.13/hashseal-0.10.13.tar.gz \
+HASHSEAL_SHA256=<SHA256SUMS 中 hashseal-0.10.13.tar.gz 的值> \
   curl -fsSL .../install.sh | sh
 ```
 
 ```powershell
-$env:HASHSEAL_URL = "https://github.com/renengade/hashseal/releases/download/v0.10.4/hashseal-0.10.4.tar.gz"
-$env:HASHSEAL_SHA256 = "<SHA256SUMS 中 hashseal-0.10.4.tar.gz 的值>"
+$env:HASHSEAL_URL = "https://github.com/renengade/hashseal/releases/download/v0.10.13/hashseal-0.10.13.tar.gz"
+$env:HASHSEAL_SHA256 = "<SHA256SUMS 中 hashseal-0.10.13.tar.gz 的值>"
 irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 | iex
 ```
 
@@ -55,7 +57,7 @@ irm https://github.com/renengade/hashseal/releases/latest/download/install.ps1 |
 ```bash
 uv tool install git+https://github.com/renengade/hashseal
 pipx install git+https://github.com/renengade/hashseal
-pip install hashseal-0.10.4-py3-none-any.whl   # 直接装 Release 中的 wheel
+pip install hashseal-0.10.13-py3-none-any.whl   # 直接装 Release 中的 wheel
 ```
 
 ## 国内网络 / 镜像
@@ -94,8 +96,10 @@ Windows 原生安装对 `D:\` 本地盘的大文件哈希比 WSL `/mnt/*`（9P�
 
 ## Docker
 
-镜像用于 CI/服务器中的**验证**场景（GUI 面向桌面，容器内不建议使用）：
+仓库提供 `Dockerfile`，可自行构建（适合 CI/服务器中的**验证**场景；GUI 面向桌面，
+容器内不建议使用）：
 
 ```bash
-docker run --rm -v "$PWD:/work" ghcr.io/renengade/hashseal verify /work/file
+docker build -t hashseal .
+docker run --rm -v "$PWD:/work" hashseal verify /work/file
 ```
