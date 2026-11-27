@@ -245,6 +245,20 @@ class HardeningTest(unittest.TestCase):
             stream.flush()
         self.assertIn(b"?", buf.getvalue())
 
+    def test_fingerprint_private_key_is_friendly_error(self) -> None:
+        rc, out = self._run("fingerprint", str(self.priv))
+        self.assertEqual(rc, 2, out)
+        self.assertIn("私钥", out)
+        self.assertNotIn("Traceback", out)
+
+    def test_fingerprint_invalid_pem_is_friendly_error(self) -> None:
+        bad = self.tmp / "bad.pem"
+        bad.write_text("not a key\n", encoding="utf-8")
+        rc, out = self._run("fingerprint", str(bad))
+        self.assertEqual(rc, 2, out)
+        self.assertIn("不是有效的公钥", out)
+        self.assertNotIn("Traceback", out)
+
     def test_sbom_default_output_next_to_dir(self) -> None:
         d = self._make_dir()
         self._run("sign", str(d), "-k", str(self.priv), "--force")

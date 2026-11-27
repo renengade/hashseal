@@ -63,6 +63,8 @@ hashseal keygen [--private PATH] [--public PATH] [--password-file PATH] [--force
 hashseal fingerprint [PUBLIC] [-k PATH]
 ```
 
+只接受公钥。误传私钥或无效 PEM 时会给出单行提示（退出码 2），不会打印堆栈。
+
 ---
 
 ## hash

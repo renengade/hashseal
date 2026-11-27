@@ -16,7 +16,7 @@ from typing import ClassVar, NoReturn
 
 from asn1crypto import algos as asn1_algos
 from asn1crypto import core as asn1_core
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -326,7 +326,13 @@ def load_public(path: Path) -> ed25519.Ed25519PublicKey:
         die(f"需要的是公钥文件，但给的是目录: {path}")
     if not path.exists():
         die(f"找不到公钥 {path}（向发送方索取，并经可信渠道核对指纹）")
-    key = serialization.load_pem_public_key(path.read_bytes())
+    data = path.read_bytes()
+    if b"PRIVATE KEY" in data:
+        die(f"{path} 是私钥，不是公钥；请提供对应的公钥 PEM（如 hashseal_public.pem）")
+    try:
+        key = serialization.load_pem_public_key(data)
+    except (ValueError, TypeError, UnsupportedAlgorithm):
+        die(f"{path} 不是有效的公钥 PEM（需要 Ed25519 公钥）")
     if not isinstance(key, ed25519.Ed25519PublicKey):
         die(f"{path} 不是 Ed25519 公钥")
     return key

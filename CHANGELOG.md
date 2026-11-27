@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.22
+
+### Fixed
+
+- `fingerprint` 误传私钥或无效 PEM 时不再输出 Python 堆栈：
+  现在提示「是私钥，请提供公钥」或「不是有效的公钥 PEM」，退出码 2。
+  该友好提示对 `verify` 等所有 `load_public` 调用同样生效。
+
 ## 0.10.21
 
 ### Changed（GUI）
